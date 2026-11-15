@@ -935,6 +935,8 @@ class Backend:
     def automation_enabled(self) -> bool:
         if self.gateway:
             status, body = self._gw({"action": "automation"})
+            if status in (401, 403):   # a rejected secret is NOT "automation switched off" (that wording hid the 15/11 secret mismatch)
+                raise RuntimeError(f"scraper-gateway rejected the secret (HTTP {status}): SCRAPER_WEBHOOK_SECRET differs from the one in Supabase")
             return True if status == 0 else bool(isinstance(body, dict) and body.get("enabled") is True)
         return check_automation_enabled(self.supabase_url, self.service_role)
 
@@ -1512,6 +1514,11 @@ async def main() -> int:
     print(f"Layer-2 run: {len(sources)} source(s){' [DRY RUN]' if dry_run else ''}")
 
     packs = load_packs()
+    for s in sources:   # a pack may say which page really holds the programme (Paradiso: the DB URL is the home page, the list is at /en/program)
+        pk0 = find_pack(packs, s.get("name", ""), s.get("site_name", ""), s["url"])
+        if pk0 and pk0.get("fetch_url") and s["url"] != pk0["fetch_url"]:
+            print(f"[{s.get('site_name') or s.get('name')}] crawling {pk0['fetch_url']} instead of {s['url']} (pack fetch_url)")
+            s["url"] = pk0["fetch_url"]
     rendered = await crawl_many([s["url"] for s in sources])
 
     ran = errors = 0
@@ -1656,6 +1663,11 @@ def validate() -> int:
     n_floor = len(process_source(src, loose, 200, []))
     n_heur = len(extract_via_heuristic(loose, src["url"], "X", {"event_container": ".does-not-exist", "title": "h3"}))
     check("selectors that match nothing never lower the heuristic count", n_floor >= n_heur, f"{n_floor} vs {n_heur}")
+
+    pk_par = find_pack(load_packs(), "paradiso", "Paradiso", "https://www.paradiso.nl/")
+    check("paradiso pack crawls /en/program (DB url is the home page)", bool(pk_par) and pk_par.get("fetch_url") == "https://www.paradiso.nl/en/program", str(pk_par and pk_par.get("fetch_url")))
+    par_ev = parse_paradiso_by_date(open(os.path.join(BASE_DIR, "fixtures", "paradiso_program.html"), encoding="utf-8").read(), "https://www.paradiso.nl/en/program", "Paradiso")
+    check("paradiso programme fixture still parses", len(par_ev) >= 1, str(len(par_ev)))
 
     jld = parse_jsonld_events(page_html, base, "OCCII")
     check("jsonld finds 2 events", len(jld) == 2, f"got {len(jld)}")

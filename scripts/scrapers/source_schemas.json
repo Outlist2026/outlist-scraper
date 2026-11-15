@@ -84,6 +84,7 @@
         "link": "a",
         "description": ".event-card__description, .description"
       },
+      "fetch_url": "https://www.paradiso.nl/en/program",
       "list_parser": "paradiso_by_date"
     },
     {
