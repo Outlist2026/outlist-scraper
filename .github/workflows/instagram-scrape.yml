@@ -1,0 +1,82 @@
+# Instagram scraper (S5). Runs on GitHub Actions of the PUBLIC runner repository. Plain Python, no browser, no Instagram login.
+# Posts come from Apify; Outlist's ig-gateway decides which posts are events (local model, no LLM) and the events go to the normal
+# approval queue (in_review, never auto-published). The database service key never reaches this repository.
+#
+# Repository settings:
+#   Secret    SCRAPER_WEBHOOK_SECRET   same value as the edge function secret of the same name
+#   Secret    APIFY_API_KEYS           Apify tokens, comma separated (free accounts in rotation); or the single secret APIFY_API_KEY
+#   Secret    APIFY_API_KEY            optional single Apify token (used when APIFY_API_KEYS is empty). Set a monthly spend cap on each Apify account
+#   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
+#
+# Switch off without touching code: disable this workflow, or set FEATURE_IG_SCRAPER_ENABLED=false in Outlist.
+
+name: Scrape Instagram
+
+on:
+  schedule:
+    - cron: '30 7 * * 1,4'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Fetch and classify, post and store nothing (still uses Apify credit)'
+        required: false
+        default: true
+        type: boolean
+      force:
+        description: 'Run even when automation is switched off in Outlist'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape-instagram
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Run the Instagram scraper
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SCRAPER_WEBHOOK_SECRET: ${{ secrets.SCRAPER_WEBHOOK_SECRET }}
+          APIFY_API_KEYS: ${{ secrets.APIFY_API_KEYS }}
+          APIFY_API_KEY: ${{ secrets.APIFY_API_KEY }}
+          OUTLIST_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          OUTLIST_FORCE: ${{ inputs.force || 'false' }}
+          PYTHONUTF8: '1'
+        run: python scripts/scrapers/instagram_scraper.py
+
+  notify-failure:
+    # A scheduled run that fails (all Apify keys used up, Apify down, gateway error) opens one issue in this repo -> e-mail to its watchers.
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update failure issue
+        run: |
+          TITLE="Cron failing: Scrape Instagram"
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ -z "$NUM" ]; then
+            gh issue create --title "$TITLE" --body "Scheduled run failed: $RUN_URL"
+          else
+            echo "Issue #$NUM already open - not adding more noise (latest failure: $RUN_URL)"
+          fi

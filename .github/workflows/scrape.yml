@@ -1,0 +1,65 @@
+# Event scraper (Crawl4AI, headless Chromium). Runs on GitHub Actions of a PUBLIC repository (free, unlimited minutes).
+# It talks to Outlist through two scoped doors only: the scraping-webhook (insert events) and the scraper-gateway (source list + run outcome).
+# Both need the same shared secret; the database service key never reaches this repository.
+#
+# Repository settings:
+#   Secret    SCRAPER_WEBHOOK_SECRET   same value as the edge function secret of the same name
+#   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
+#
+# The private Outlist repository keeps its own copy of this workflow: two independent runners. Duplicates are absorbed by the webhook
+# (URL / hash dedup, merge of better data), so running both is safe.
+
+name: Scrape events
+
+on:
+  schedule:
+    - cron: '40 8,12,16,18,20 * * *'
+  workflow_dispatch:
+    inputs:
+      only_source:
+        description: 'Scrape only sources whose name/site_name/url contains this substring'
+        required: false
+        default: ''
+        type: string
+      dry_run:
+        description: 'Crawl and log payloads, but do not POST to the webhook or update the database'
+        required: false
+        default: false
+        type: boolean
+      force:
+        description: 'Run even when automation is switched off in Outlist'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape-events
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install Crawl4AI + headless Chromium
+        run: |
+          set -euo pipefail
+          pip install "crawl4ai==0.9.5"  # pinned: 0.9 changed JsonCssExtractionStrategy.run(); bump deliberately after python scripts/scrapers/outlist_crawler.py --validate
+          crawl4ai-setup
+      - name: Run the crawler
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SCRAPER_WEBHOOK_SECRET: ${{ secrets.SCRAPER_WEBHOOK_SECRET }}
+          OUTLIST_ONLY_SOURCE: ${{ inputs.only_source || '' }}
+          OUTLIST_DRY_RUN: ${{ inputs.dry_run || 'false' }}
+          OUTLIST_FORCE: ${{ inputs.force || 'false' }}
+        run: python scripts/scrapers/outlist_crawler.py

@@ -1,0 +1,29 @@
+{
+  "_note": "Shared title cases for supabase/functions/_shared/extract/title.ts (sanitizeTitle) and scripts/scrapers/outlist_crawler.py (sanitize_title / clean_title). Both implementations must return `expected`; an empty expected means the title is rejected (bad_title).",
+  "_waitlist_rule": [
+    "1. Match the whole words 'waitlist', 'wait list', 'wait-list' (separator: whitespace or a hyphen, optional) and 'wachtlijst', case-insensitive. Whole word means no letter or digit directly before or after (TS: (?<![\\p{L}\\p{N}])(?:wait[\\s-]?list|wachtlijst)(?![\\p{L}\\p{N}]) with flags iu; Python: (?<!\\w)(?:wait[\\s-]?list|wachtlijst)(?!\\w) with re.IGNORECASE).",
+    "2. Remove a bracket pair that contains only the word ( ) [ ] { } first, then the bare word, each replaced by a space.",
+    "3. Remove brackets left empty: [(\\[{]\\s*[)\\]}] -> space.",
+    "4. Collapse a run of separators split only by whitespace into the first one: ([-–—|:·•,;/])(?:\\s+[-–—|:·•,;/])+ -> \\1",
+    "5. Collapse whitespace and trim, then let the existing edge-separator trim remove a leftover separator at either end.",
+    "6. Step 1-5 run inside the existing 4-pass sanitize loop, before the ticket call-to-action prefix/suffix strip."
+  ],
+  "cases": [
+    { "input": "Hard Techno Night (Waitlist)", "expected": "Hard Techno Night" },
+    { "input": "Hard Techno Night [WAITLIST]", "expected": "Hard Techno Night" },
+    { "input": "WAITLIST - Name Live", "expected": "Name Live" },
+    { "input": "Waitlist | Name", "expected": "Name" },
+    { "input": "Name | Wachtlijst", "expected": "Name" },
+    { "input": "Name – Wait List – Paradiso", "expected": "Name – Paradiso" },
+    { "input": "Name Wait-list", "expected": "Name" },
+    { "input": "Name: wachtlijst", "expected": "Name" },
+    { "input": "Rock/Pop - Waitlist - Live", "expected": "Rock/Pop - Live" },
+    { "input": "Techno Waitlist Night", "expected": "Techno Night" },
+    { "input": "Waitlist", "expected": "" },
+    { "input": "(Wachtlijst)", "expected": "" },
+    { "input": "Waitlisted Records Night", "expected": "Waitlisted Records Night" },
+    { "input": "Waitlist2026 Party", "expected": "Waitlist2026 Party" },
+    { "input": "Plain Friday Night", "expected": "Plain Friday Night" },
+    { "input": "Name – THE TOUR - koop tickets", "expected": "Name – THE TOUR" }
+  ]
+}

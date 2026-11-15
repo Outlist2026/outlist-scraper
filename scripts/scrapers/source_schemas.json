@@ -1,0 +1,416 @@
+{
+  "$comment": [
+    "Default CSS schema packs for the Layer-2 crawler (scripts/scrapers/outlist_crawler.py).",
+    "Used ONLY when a scraping_sources row has no event_container selector: this kills the",
+    "'no event_container selector' skip backlog (9/14 sources in the 2026-06-21 dry run)",
+    "without waiting for admin-panel selector entry.",
+    "Match order: first pack whose 'name' substring (case-insensitive) matches source",
+    "name/site_name, OR whose 'url' substring matches the source URL. Substrings are",
+    "chosen long enough to avoid false positives.",
+    "These selectors are consumed by JsonCssExtractionStrategy (baseSelector + fields).",
+    "The crawler always falls back to JSON-LD first and to the 9-candidate heuristic",
+    "discovery, so a wrong selector here degrades to old behavior, never worse.",
+    "Live tuning happens at rollout-wave gates (see plan section 5/6).",
+    "Rollout order: OCCII (pilot, wave 0), Melkweg + Paradiso (wave 1), Partyflock + RA (wave 2), rest (wave 3).",
+    "Round 2: EVERY registered scraping_sources row now has a pack (round-2 hard",
+    "requirement: per-source external LINK + raw_time_string + images). The only",
+    "registered row without a pack is the internal pseudo-source 'webhook'",
+    "(url internal://scraping-webhook) — it is an intake endpoint, not a crawl",
+    "target. The edge_function-method student-org packs are reference/fallback:",
+    "their primary runner stays the edge fn, but the packs become live if the",
+    "method is ever flipped to html_scrape. Every pack carries explicit 'link'",
+    "and 'time' keys; the crawler hardens all three signals on every candidate",
+    "regardless (probe_link / probe_image / probe_time_text)."
+  ],
+  "packs": [
+    {
+      "match": {
+        "name": [
+          "occii"
+        ],
+        "url": [
+          "occii.org"
+        ]
+      },
+      "selectors": {
+        "event_container": ".event, article",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".location, .venue",
+        "image": "img",
+        "link": "a",
+        "description": ".description, .event-description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "melkweg"
+        ],
+        "url": [
+          "melkweg.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .c-event, .event-list-item",
+        "title": "h2, h3, .c-event__title",
+        "date": "time, .c-event__date",
+        "time": "time, .event-time",
+        "location": ".c-event__room, .venue",
+        "image": "img",
+        "link": "a",
+        "description": ".c-event__description, .description"
+      },
+      "list_parser": "day_grouped",
+      "detail_times": true
+    },
+    {
+      "match": {
+        "name": [
+          "paradiso"
+        ],
+        "url": [
+          "paradiso.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event-card, .event-item",
+        "title": "h2, h3, .event-card__title",
+        "date": "time, .event-card__date",
+        "time": "time, .event-time",
+        "location": ".event-card__hall, .venue",
+        "image": "img",
+        "link": "a",
+        "description": ".event-card__description, .description"
+      },
+      "list_parser": "paradiso_by_date"
+    },
+    {
+      "match": {
+        "name": [
+          "partyflock"
+        ],
+        "url": [
+          "partyflock.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .agenda-item, li",
+        "title": "h2, h3, .title",
+        "date": "time, .date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      },
+      "list_parser": "microdata_events",
+      "city": "Amsterdam"
+    },
+    {
+      "match": {
+        "name": [
+          "resident advisor"
+        ],
+        "url": [
+          "ra.co"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, li[data-testid], .event-item",
+        "title": "h3, h2, [data-testid='event-name']",
+        "date": "time, .date",
+        "time": "time, .event-time",
+        "location": ".venue, [data-testid='venue-name']",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "de school"
+        ],
+        "url": [
+          "deschool.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event",
+        "title": "h2, h3",
+        "date": "time, .date",
+        "time": "time, .event-time",
+        "location": ".venue",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "air amsterdam",
+          "air"
+        ],
+        "url": [
+          "air-amsterdam.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event-card, .event",
+        "title": "h2, h3, .event-card__title",
+        "date": "time, .event-card__date",
+        "time": "time, .event-time",
+        "location": ".venue",
+        "image": "img",
+        "link": "a",
+        "description": ".event-card__description, .description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "shelter"
+        ],
+        "url": [
+          "shelteramsterdam.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": ".agenda-item, article",
+        "title": ".agenda-item__title, h3, h2",
+        "date": ".agenda-item__date, time",
+        "time": "time, .event-time",
+        "location": ".agenda-item__venue",
+        "image": "img",
+        "link": "a",
+        "description": ".agenda-item__description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "thuishaven"
+        ],
+        "url": [
+          "thuishaven.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": ".event-item, article",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description, .event-description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "warehouse"
+        ],
+        "url": [
+          "warehouse-elementenstraat.nl",
+          "elementenstraat.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event, .agenda-item",
+        "title": "h2, h3, .title",
+        "date": "time, .date",
+        "time": "time, .event-time",
+        "location": ".venue",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      },
+      "list_parser": "dotted_date_list"
+    },
+    {
+      "match": {
+        "name": [
+          "bitterzoet"
+        ],
+        "url": [
+          "bitterzoet.com"
+        ]
+      },
+      "selectors": {
+        "event_container": ".agenda-item, article, li.event",
+        "title": ".event-name, h2, h3",
+        "date": ".event-date, time",
+        "time": "time, .event-time",
+        "location": ".venue",
+        "image": "img",
+        "link": "a",
+        "description": ".event-description, .description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "ndsm"
+        ],
+        "url": [
+          "ndsm.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event, .agenda-item",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "amsterdamnightlifeticket",
+          "nightlife ticket"
+        ],
+        "url": [
+          "amsterdamnightlifeticket.com"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event, .product",
+        "title": "h2, h3, .woocommerce-loop-product__title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "amsterdamfun"
+        ],
+        "url": [
+          "amsterdamfun.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event-card, .event",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "asva"
+        ],
+        "url": [
+          "asva.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event, .agenda-item",
+        "title": "h2.entry-title, h2, h3",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".entry-summary, .description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "esn amsterdam"
+        ],
+        "url": [
+          "esn-amsterdam.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event-card, .event",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "esn vu"
+        ],
+        "url": [
+          "esnvuamsterdam.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, .event-card, .event",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "uva student"
+        ],
+        "url": [
+          "student.uva.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "article, li.event, .event",
+        "title": "h2, h3, .event-title",
+        "date": "time, .event-date",
+        "time": "time, .event-time",
+        "location": ".venue, .location",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    },
+    {
+      "match": {
+        "name": [
+          "vu libcal"
+        ],
+        "url": [
+          "libcal.vu.nl"
+        ]
+      },
+      "selectors": {
+        "event_container": "li.event-row, article, .event",
+        "title": "h2, h3, .event-title",
+        "date": "time, .badge, .event-date",
+        "time": "time, .event-time",
+        "location": ".location, .venue",
+        "image": "img",
+        "link": "a",
+        "description": ".description"
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+[
+  { "shortCode": "DAAAA01", "ownerUsername": "ESN_Amsterdam", "type": "Image", "caption": "Intro borrel! Vrijdag 14 november, 20:00 at Cafe de Zwart. Gratis entree. Meld je aan via de link in bio", "timestamp": "2026-11-10T10:00:00.000Z", "displayUrl": "https://scontent.example.com/a.jpg", "dimensionsWidth": 1080, "dimensionsHeight": 1350, "url": "https://www.instagram.com/p/DAAAA01/", "likesCount": 120, "commentsCount": 4 },
+  { "shortCode": "DAAAA02", "ownerUsername": "esn_amsterdam", "type": "Sidecar", "caption": "Thank you all for the amazing night, photos are online", "timestamp": "2026-11-09T10:00:00.000Z", "displayUrl": "https://scontent.example.com/b.jpg", "dimensionsWidth": 1080, "dimensionsHeight": 1080, "url": "https://www.instagram.com/p/DAAAA02/", "likesCount": 80, "commentsCount": 1 },
+  { "shortCode": "DAAAA03", "ownerUsername": "esn_amsterdam", "type": "Video", "caption": "", "timestamp": "2026-11-08T10:00:00.000Z", "displayUrl": "https://scontent.example.com/c.jpg", "url": "https://www.instagram.com/p/DAAAA03/", "likesCount": -1, "commentsCount": 0 },
+  { "shortCode": "DAAAA04", "ownerUsername": "esn_amsterdam", "type": "Image", "caption": "Pub quiz Thursday 4 December 20:30, €5 per team", "timestamp": "2026-11-07T10:00:00.000Z", "displayUrl": "https://scontent.example.com/d.jpg", "dimensionsWidth": 1080, "dimensionsHeight": 1350 },
+  { "ownerUsername": "esn_amsterdam", "type": "Image", "caption": "item without a shortcode is dropped" }
+]

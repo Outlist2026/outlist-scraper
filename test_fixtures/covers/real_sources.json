@@ -1,0 +1,134 @@
+{
+ "_doc": "F1-09 / T-COV-05: 3 real sources (public GET 2026-10-19). legacy_image_url = what the pre-fix crawler stored (literal img src via JsonCss attribute 'src'); crawler_image_url = outlist_crawler.py output on the card fixture in sources/ (asserted by --validate); page_image_url = og:image of the event page; images = first bytes (header only, enough for dimensions) + Content-Range total of the real files.",
+ "sources": [
+  {
+   "source": "OCCII",
+   "page_url": "https://occii.org/",
+   "card_fixture": "sources/occii_cards.html",
+   "selectors": {
+    "event_container": ".occii-event-display",
+    "title": "h3.occii-event-link a",
+    "date": "p.occii-event-times",
+    "link": "h3.occii-event-link a",
+    "image": ".occii-event-display-image img"
+   },
+   "events": [
+    {
+     "title": "Pretty//Ugly: Goblin Band (London) + The Silver Field (Derbyshire) + Moonbugs (Den Haag)",
+     "external_url": "https://occii.org/events/goblin-band/",
+     "legacy_image_url": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjwvc3ZnPg==",
+     "crawler_image_url": "https://occii.org/wp-content/uploads/2026/06/gobl-print-1-scaled.png",
+     "page_image_url": "https://occii.org/wp-content/uploads/2026/06/gobl-print-1-scaled.png",
+     "expected_cover_url": "https://occii.org/wp-content/uploads/2026/06/gobl-print-1-scaled.png"
+    },
+    {
+     "title_prefix": "FRED FRITH",
+     "legacy_image_url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20350%20263%22%3E%3C%2Fsvg%3E",
+     "crawler_image_url": "https://occii.org/wp-content/uploads/2026/05/IMG_0398-scaled.jpeg",
+     "expected_cover_url": "https://occii.org/wp-content/uploads/2026/05/IMG_0398-scaled.jpeg"
+    }
+   ]
+  },
+  {
+   "source": "Melkweg",
+   "page_url": "https://www.melkweg.nl/nl/agenda/",
+   "card_fixture": "sources/melkweg_card.html",
+   "selectors": {
+    "event_container": "li.styles_event-list-day__list-item__o6KTp",
+    "title": "h3",
+    "image": "img",
+    "link": "a"
+   },
+   "events": [
+    {
+     "title": "Sam Tompkins",
+     "external_url": "https://www.melkweg.nl/nl/agenda/sam-tompkins-18-10-2026/",
+     "legacy_image_url": "https://assets.melkweg.nl/scaled/width:150_height:85/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png",
+     "crawler_image_url": "https://assets.melkweg.nl/scaled/width:450_height:/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png",
+     "page_image_url": "https://assets.melkweg.nl/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png",
+     "expected_cover_url": "https://assets.melkweg.nl/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png"
+    }
+   ]
+  },
+  {
+   "source": "Paradiso",
+   "page_url": "https://www.paradiso.nl/",
+   "card_fixture": "sources/paradiso_card.html",
+   "selectors": {
+    "event_container": "article",
+    "title": "h2",
+    "image": "img"
+   },
+   "events": [
+    {
+     "title": "Thisislorelei",
+     "legacy_image_url": "https://assets.paradiso.nl/images/transforms/event/_73x91_crop_center-center_35_none/thisislorelei-web-1788942896.jpg",
+     "crawler_image_url": "https://assets.paradiso.nl/images/transforms/event/_1392x1740_crop_center-center_none/2931703/thisislorelei-web-1788942896.webp",
+     "expected_cover_url": "https://assets.paradiso.nl/images/transforms/event/_1392x1740_crop_center-center_none/2931703/thisislorelei-web-1788942896.webp"
+    }
+   ]
+  }
+ ],
+ "images": {
+  "https://occii.org/wp-content/uploads/2026/06/gobl-print-1-scaled.png": {
+   "header_b64": "iVBORw0KGgoAAAANSUhEUgAABagAAAgACAYAAADDvNQ=",
+   "total_bytes": 1899211,
+   "info": {
+    "format": "png",
+    "width": 1448,
+    "height": 2048,
+    "hasAlpha": true
+   }
+  },
+  "https://occii.org/wp-content/uploads/2026/05/IMG_0398-scaled.jpeg": {
+   "header_b64": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAYEBAUEBAYFBQUGBgYHCQ4JCQgICRINDQoOFRIWFhUSFBQXGiEcFxgfGRQUHScdHyIjJSUlFhwpLCgkKyEkJST/2wBDAQYGBgkICREJCREkGBQYJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCT/wgARCAYACAADASIAAhEBAxE=",
+   "total_bytes": 695860,
+   "info": {
+    "format": "jpeg",
+    "height": 1536,
+    "width": 2048,
+    "hasAlpha": false
+   }
+  },
+  "https://assets.melkweg.nl/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png": {
+   "header_b64": "iVBORw0KGgoAAAANSUhEUgAADkEAAAghCAYAAADnmqM=",
+   "total_bytes": 13524755,
+   "info": {
+    "format": "png",
+    "width": 3649,
+    "height": 2081,
+    "hasAlpha": true
+   }
+  },
+  "https://assets.melkweg.nl/scaled/width:450_height:/eventpages/cf89fc23-e33a-4360-83fa-0b6a9b8563df/Samtompkins.png": {
+   "header_b64": "iVBORw0KGgoAAAANSUhEUgAAAcIAAAEBCAMAAAGrvWU=",
+   "total_bytes": 82212,
+   "info": {
+    "format": "png",
+    "width": 450,
+    "height": 257,
+    "hasAlpha": false
+   }
+  },
+  "https://assets.paradiso.nl/images/transforms/event/_1392x1740_crop_center-center_none/2931703/thisislorelei-web-1788942896.webp": {
+   "header_b64": "UklGRoRVAgBXRUJQVlA4IHhVAgBwXwydASpwBcwGPmE=",
+   "total_bytes": 152972,
+   "info": {
+    "format": "webp",
+    "width": 1392,
+    "height": 1740,
+    "hasAlpha": false
+   }
+  },
+  "https://assets.paradiso.nl/images/transforms/event/_73x91_crop_center-center_35_none/thisislorelei-web-1788942896.jpg": {
+   "header_b64": "/9j/4AAQSkZJRgABAQEBLAEsAAD/2wBDABcQERQRDhcUEhQaGBcbIjklIh8fIkYyNSk5UkhXVVFIUE5bZoNvW2F8Yk5QcptzfIeLkpSSWG2grJ+OqoOPko3/2wBDARgaGiIeIkMlJUONXlBejY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY3/wAARCABbAEkDASIAAhEBAxE=",
+   "total_bytes": 1144,
+   "info": {
+    "format": "jpeg",
+    "height": 91,
+    "width": 73,
+    "hasAlpha": false
+   }
+  }
+ }
+}
