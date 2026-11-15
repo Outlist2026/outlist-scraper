@@ -1268,7 +1268,134 @@ def parse_dotted_date_list(page_html: str, base_url: str, source_label: str) -> 
     return events
 
 
-EXCLUSIVE_LIST_PARSERS = {"microdata_events", "paradiso_by_date", "dotted_date_list"}
+def _first_clock(text: str) -> str:
+    """First HH:MM / HH.MM start time in a 'HH:MM - HH:MM' style string, '' when there is none (never guessed)."""
+    m = re.search(r"(?<![\d:.])([01]?\d|2[0-3])[:.]([0-5]\d)(?![\d:.])", text or "")
+    return f"{int(m.group(1)):02d}:{m.group(2)}" if m else ""
+
+
+def parse_thuishaven_accordion(page_html: str, base_url: str, source_label: str) -> list[dict]:
+    """Thuishaven home page: one accordion row per party. Title row 'DD MON | line-up', then a panel with the date
+    (DD-MM-YYYY), the clock times (HH.MM - HH.MM), the 'Meer Info' link and the poster (inside <noscript>, the <img> is a lazy placeholder)."""
+    events: list[dict] = []
+    for part in re.split(r'(?=<span class="qode-tab-title-inner")', page_html)[1:]:
+        title_m = re.match(r'<span class="qode-tab-title-inner"[^>]*>(.*?)</span>', part, re.S)
+        date_m = re.search(r'agenda-details__date.*?<p>\s*(\d{1,2})-(\d{1,2})-(\d{4})\s*</p>', part, re.S)
+        if not title_m or not date_m:
+            continue
+        d, m, y = int(date_m.group(1)), int(date_m.group(2)), int(date_m.group(3))
+        if not (1 <= d <= 31 and 1 <= m <= 12 and 2000 <= y <= 2100):
+            continue
+        times_m = re.search(r'agenda-details__times.*?<p>(.*?)</p>', part, re.S)
+        clock = _first_clock(html_text(times_m.group(1))) if times_m else ""
+        link_m = re.search(r'<a\b[^>]*\bhref="([^"]+)"[^>]*thuishaven-button--secondary', part) or \
+            re.search(r'<a\b[^>]*thuishaven-button--secondary[^>]*\bhref="([^"]+)"', part)
+        img_m = re.search(r'<noscript>\s*<img\b[^>]*\bsrc="([^"]+)"', part)
+        raw_title = re.sub(r"^\s*\d{1,2}\s+[A-Za-z]{3}\w*\s*\|\s*", "", html_text(title_m.group(1)))
+        t = clean_title(raw_title)[:255]
+        if not t:
+            continue
+        day_iso = f"{y:04d}-{m:02d}-{d:02d}"
+        events.append({
+            "source": source_label,
+            "title": t,
+            "raw_date_string": day_iso,
+            "raw_time_string": clock,
+            "venue_name": source_label,
+            "image_url": absolutize(base_url, unescape(img_m.group(1))) if img_m else "",
+            "external_url": absolutize(base_url, unescape(link_m.group(1))) if link_m else "",
+            "description": "",
+            "source_text": evidence_text(t, day_iso, clock),
+        })
+    return events
+
+
+_SHELTER_DATE = re.compile(r'event-date__value">\s*(\d{1,2})\.(\d{1,2})\s*<')
+
+
+def parse_shelter_events(page_html: str, base_url: str, source_label: str, now: datetime | None = None) -> list[dict]:
+    """Shelter home page: <article class="event"> blocks, rendered twice (mobile + desktop list; dedupe() drops the copy).
+    Date 'Friday 20.11' (no year), title in .event-title, one 'HH:MM - HH:MM' per room (the earliest listed is the start), ticket link."""
+    now = now or datetime.now(timezone.utc)
+    events: list[dict] = []
+    for part in re.split(r'(?=<article\b[^>]*class="event\b)', page_html)[1:]:
+        part = part.split("</article>", 1)[0]
+        date_m = _SHELTER_DATE.search(part)
+        title_m = re.search(r'class="event-title[^"]*"[^>]*>(.*?)</h2>', part, re.S)
+        if not date_m or not title_m:
+            continue
+        d, m = int(date_m.group(1)), int(date_m.group(2))
+        year = now.year
+        try:
+            if datetime(year, m, d, tzinfo=timezone.utc) < now - timedelta(days=60):
+                year += 1
+            datetime(year, m, d)
+        except ValueError:
+            continue
+        clocks = [c for c in (_first_clock(html_text(x)) for x in re.findall(r'event-room-title-time[^>]*>(.*?)</span>', part, re.S)) if c]
+        clock = min(clocks, key=lambda c: (int(c[:2]) < 12, c)) if clocks else ""   # 23:00 before 00:00: club nights start late in the evening
+        link_m = re.search(r'<a\b[^>]*\bhref="(https?://[^"]+)"', part)
+        t = clean_title(html_text(title_m.group(1)))[:255]
+        if not t:
+            continue
+        day_iso = f"{year:04d}-{m:02d}-{d:02d}"
+        events.append({
+            "source": source_label,
+            "title": t,
+            "raw_date_string": day_iso,
+            "raw_time_string": clock,
+            "venue_name": source_label,
+            "image_url": best_image_from_html(part, base_url),
+            "external_url": absolutize(base_url, unescape(link_m.group(1))) if link_m else "",
+            "description": "",
+            "source_text": evidence_text(t, day_iso, clock),
+        })
+    return events
+
+
+def parse_ndsm_agenda(page_html: str, base_url: str, source_label: str) -> list[dict]:
+    """ndsm.nl agenda (Webflow CMS): items carry data-start-date / data-end-date. Only items of at most 3 days become events
+    (months-long exhibitions and items without a date are not events with a day to state). Time from 'Tijden', place from 'Locatie'."""
+    events: list[dict] = []
+    for part in re.split(r'(?=<div\b[^>]*class="accordion-css__item agenda w-dyn-item")', page_html)[1:]:
+        head = part[:500]
+        sd = re.search(r'data-start-date="(\d{4}-\d{2}-\d{2})"', head)
+        ed = re.search(r'data-end-date="(\d{4}-\d{2}-\d{2})"', head)
+        title_m = re.search(r"<h3\b[^>]*>(.*?)</h3>", part, re.S)
+        if not sd or not title_m:
+            continue
+        try:
+            span = (datetime.fromisoformat(ed.group(1) if ed else sd.group(1)) - datetime.fromisoformat(sd.group(1))).days
+        except ValueError:
+            continue
+        if span < 0 or span > 3:
+            continue
+        def detail(label: str) -> str:
+            m = re.search(label + r'</h4><div class="agenda_details-text">(.*?)</div>', part, re.S)
+            return collapse_text(html_text(m.group(1))) if m else ""
+        loc = detail("Locatie")
+        if not loc or loc.lower().startswith("bekijk"):
+            loc = ""
+        clock = _first_clock(detail("Tijden"))
+        link_m = re.search(r'agenda_button-group.*?<a\b[^>]*\bhref="(https?://[^"]+)"', part, re.S)
+        t = clean_title(html_text(title_m.group(1)))[:255]
+        if not t:
+            continue
+        events.append({
+            "source": source_label,
+            "title": t,
+            "raw_date_string": sd.group(1),
+            "raw_time_string": clock,
+            "venue_name": loc or source_label,
+            "image_url": best_image_from_html(part, base_url),
+            "external_url": absolutize(base_url, unescape(link_m.group(1))) if link_m else "",
+            "description": "",
+            "source_text": evidence_text(t, sd.group(1), clock, loc),
+        })
+    return events
+
+
+EXCLUSIVE_LIST_PARSERS = {"microdata_events", "paradiso_by_date", "dotted_date_list", "thuishaven_accordion", "shelter_events", "ndsm_agenda"}
 
 
 _PROGRAM_LINE = re.compile(r"^(\d{1,2}[:.]\d{2})\s+(.{2,80})$")
@@ -1451,6 +1578,12 @@ def process_source(source: dict, page_html: str, crawl_status: int,
             found = parse_microdata_events(page_html, base_url, label, (pack_for_source or {}).get("city", ""))
         elif list_parser == "paradiso_by_date":
             found = parse_paradiso_by_date(page_html, base_url, label)
+        elif list_parser == "thuishaven_accordion":
+            found = parse_thuishaven_accordion(page_html, base_url, label)
+        elif list_parser == "shelter_events":
+            found = parse_shelter_events(page_html, base_url, label)
+        elif list_parser == "ndsm_agenda":
+            found = parse_ndsm_agenda(page_html, base_url, label)
         else:
             found = parse_dotted_date_list(page_html, base_url, label)
         return dedupe(events + found)
@@ -1923,6 +2056,39 @@ def validate() -> int:
           not parse_microdata_events("<html><body><h1>Home</h1></body></html>", "https://x.example", "X")
           and not parse_paradiso_by_date("<html><body><h1>Home</h1></body></html>", "https://x.example", "X")
           and not parse_dotted_date_list("<html><body><h1>Home</h1></body></html>", "https://x.example", "X"))
+
+    # quality parsers, fixtures trimmed from the live pages saved 2026-11-15
+    _empty = "<html><body><h1>Home</h1></body></html>"
+    th = process_source({"name": "Thuishaven", "site_name": "Thuishaven", "url": "https://thuishaven.nl/"}, _fx("thuishaven_events.html"), 200, packs)
+    check("thuishaven: the accordion rows parse (18 distinct links of 19 rows)", len(th) == 18, f"got {len(th)}")
+    check("thuishaven: ISO date, real start time, 'Meer Info' link and poster kept, line-up title without the date prefix",
+          bool(th) and th[0]["raw_date_string"] == "2026-11-15" and th[0]["raw_time_string"] == "13:00"
+          and th[0]["external_url"].startswith("https://thuishaven.nl/15-nov-") and th[0]["image_url"].startswith("https://thuishaven.nl/wp-content/")
+          and th[0]["title"].startswith("Cynthia Spiering"), str(th[:1]))
+    check("thuishaven: every event has a time, a link and an image", all(e["raw_time_string"] and e["external_url"] and e["image_url"] for e in th))
+    sh_now = datetime(2026, 11, 15, tzinfo=timezone.utc)
+    sh = dedupe(parse_shelter_events(_fx("shelter_events.html"), "https://shelteramsterdam.nl/", "Shelter Amsterdam", now=sh_now))
+    check("shelter: 14 events (the page lists each twice, mobile + desktop)", len(sh) == 14, f"got {len(sh)}")
+    check("shelter: date with year, the club's 23:00 start (not the 00:00 room), ticket link",
+          bool(sh) and sh[0]["raw_date_string"] == "2026-11-20" and sh[0]["raw_time_string"] == "23:00"
+          and sh[0]["external_url"].startswith("https://www.fourvenues.com/"), str(sh[:1]))
+    check("shelter: every event has a time and a link", all(e["raw_time_string"] and e["external_url"] for e in sh))
+    check("shelter: a December date after the year turn belongs to the next year",
+          parse_shelter_events(_fx("shelter_events.html").replace(">20.11<", ">05.01<"), "https://shelteramsterdam.nl/", "S",
+                               now=datetime(2026, 12, 20, tzinfo=timezone.utc))[0]["raw_date_string"] == "2027-01-05")
+    nd = process_source({"name": "NDSM", "site_name": "NDSM", "url": "https://ndsm.nl/agenda/"}, _fx("ndsm_agenda.html"), 200, packs)
+    check("ndsm: only the short events (<= 3 days) are listed, no months-long exhibitions and no undated items",
+          len(nd) == 3 and all(e["raw_time_string"] and e["external_url"] for e in nd), f"got {len(nd)}")
+    check("ndsm: date from data-start-date, start time from 'Tijden', place from 'Locatie'",
+          any(e["title"].startswith("STRAAT talk") and e["raw_date_string"] == "2026-12-12" and e["raw_time_string"] == "14:00"
+              and e["venue_name"] == "STRAAT Museum" for e in nd), str(nd[:2]))
+    check("quality parsers: an unrelated page yields nothing (no false positives)",
+          not parse_thuishaven_accordion(_empty, "https://x.example", "X") and not parse_shelter_events(_empty, "https://x.example", "X")
+          and not parse_ndsm_agenda(_empty, "https://x.example", "X"))
+    for nm, url in (("shelter", "https://shelteramsterdam.nl/agenda/"), ("thuishaven", "https://thuishaven.nl/events")):
+        pk_q = find_pack(packs, nm, nm, url)
+        check(f"{nm} pack: dedicated parser and fetch_url (the DB url is a 404 page)",
+              bool(pk_q) and pk_q.get("list_parser") in EXCLUSIVE_LIST_PARSERS and (pk_q.get("fetch_url") or "").startswith("https://"), str(pk_q and pk_q.get("list_parser")))
 
     print(f"\n{'ALL CHECKS PASSED' if not failures else f'{len(failures)} CHECK(S) FAILED'}")
     return 0 if not failures else 1
