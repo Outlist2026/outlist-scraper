@@ -6,8 +6,8 @@
 #   Secret    SCRAPER_WEBHOOK_SECRET   same value as the edge function secret of the same name
 #   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
 #
-# The private Outlist repository keeps its own copy of this workflow: two independent runners. Duplicates are absorbed by the webhook
-# (URL / hash dedup, merge of better data), so running both is safe.
+# This repository owns the cron (the private repo's schedule is off since 16/11/2026). A failed scheduled run opens one issue here.
+# If the private copy is ever run by hand too, duplicates are absorbed by the webhook (URL / hash dedup).
 
 name: Scrape events
 
@@ -64,4 +64,26 @@ jobs:
           OUTLIST_FORCE: ${{ inputs.force || 'false' }}
         run: python scripts/scrapers/outlist_crawler.py
 
-
+  notify-failure:
+    # A scheduled run that fails (gateway rejects the secret, Chromium/crawl4ai broken) opens one issue in this repo -> e-mail to its watchers.
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update failure issue
+        run: |
+          TITLE="Cron failing: Scrape events"
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ -z "$NUM" ]; then
+            gh issue create --title "$TITLE" --body "Scheduled run failed: $RUN_URL"
+          else
+            echo "Issue #$NUM already open - not adding more noise (latest failure: $RUN_URL)"
+          fi
