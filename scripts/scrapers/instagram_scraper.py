@@ -271,7 +271,8 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
         log("No active Instagram pages")
         return {"pages": 0}
     handles = [p["handle"] for p in pages]
-    summary = {"pages": len(handles), "posts": 0, "events": 0, "posted": 0, "errors": 0}
+    summary = {"pages": len(handles), "posts": 0, "events": 0, "posted": 0, "inserted": 0, "duplicates": 0, "filtered": 0, "errors": 0}
+    answered = [False]  # True once the webhook told us what it really stored (BUG-F20261117-2)
     started = time.time()
 
     def finish(error: str | None = None) -> dict:
@@ -280,11 +281,12 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
             return summary
         pool = getattr(adapter, "pool", None)
         keys_note = f", keys: {pool.report()}" if pool is not None and len(pool.keys) > 1 else ""
-        notes = f"pages {summary['pages']}, posts {summary['posts']}, events {summary['events']}, posted {summary['posted']}{keys_note}"
+        stored = f", inserted {summary['inserted']}, duplicates {summary['duplicates']}, filtered {summary['filtered']}" if answered[0] else ""
+        notes = f"pages {summary['pages']}, posts {summary['posts']}, events {summary['events']}, posted {summary['posted']}{stored}{keys_note}"
         if error:
             notes = f"FAILED: {error[:200]} | {notes}"
         try:
-            res = gw.call("run_log", events_inserted=summary["posted"], events_skipped=max(0, summary["posts"] - summary["events"]),
+            res = gw.call("run_log", events_inserted=summary["inserted"] if answered[0] else summary["posted"], events_skipped=max(0, summary["posts"] - summary["events"]),
                           events_errored=summary["errors"], duration_seconds=int(time.time() - started), notes=notes[:500])
         except Exception as exc:  # the log must never hide the run itself
             log(f"Could not write the run log: {exc}")
@@ -328,6 +330,15 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
             status, body = post_events(events)
             if status == 200:
                 summary["posted"] += len(events)
+                if isinstance(body, dict) and "inserted" in body:
+                    # "posted" only means sent: the webhook drops past events, spam, bad titles and merges duplicates, and says so in its answer
+                    answered[0] = True
+                    summary["inserted"] += int(body.get("inserted") or 0)
+                    summary["duplicates"] += int(body.get("skipped_duplicates") or 0)
+                    summary["filtered"] += int(body.get("filtered") or 0)
+                    log(f"Webhook stored {body.get('inserted', 0)} of {len(events)} events (duplicates {body.get('skipped_duplicates', 0)}, filtered {body.get('filtered', 0)})")
+                    for reason in (body.get("filter_log") or [])[:20]:
+                        log(f"  dropped: {reason}")
                 gw.call("confirm", posts=pending)
             else:
                 summary["errors"] += 1
@@ -461,6 +472,16 @@ def validate() -> int:
     calls.clear()
     run_flow(FakeGw(), FileAdapter(FIXTURE_PATH), lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lambda *_: None)
     assert "run_log" not in [c[0] for c in calls], "dry run writes no run log"
+    # BUG-F20261117-2: "posted" means sent. What the webhook really stored (inserted), merged as duplicate or dropped (filtered, with the reason) must be reported
+    calls.clear(); posted.clear()
+    lines = []
+    wh = {"inserted": 0, "skipped_duplicates": 0, "filtered": 1, "filter_log": ['PAST_EVENT: "T" - 2026-11-01']}
+    s = run_flow(FakeGw(), FileAdapter(FIXTURE_PATH), lambda ev: (posted.append(ev) or (200, wh)), max_pages=10, dry_run=False, force=False, log=lines.append)
+    assert s["posted"] == 1 and s["inserted"] == 0 and s["filtered"] == 1, s
+    rl = [c[1] for c in calls if c[0] == "run_log"][0]
+    assert rl["events_inserted"] == 0, "the run log counts stored events, not sent ones: " + str(rl)
+    assert "filtered 1" in rl["notes"] and "inserted 0" in rl["notes"], rl["notes"]
+    assert any("PAST_EVENT" in str(l) for l in lines), "the drop reason is printed in the run log"
     print("instagram_scraper --validate: OK")
     return 0
 
