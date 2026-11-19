@@ -9,6 +9,9 @@
 #   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
 #
 # Switch off without touching code: disable this workflow, or set FEATURE_IG_SCRAPER_ENABLED=false in Outlist.
+#
+# Test one or a few pages: run the workflow by hand with dry_run=true and handles=isaa.uva (comma separated, @ optional). Only those active
+# pages are fetched and every event found is printed; nothing is posted or stored. Scheduled runs always use all active pages.
 
 name: Scrape Instagram
 
@@ -27,6 +30,11 @@ on:
         required: false
         default: false
         type: boolean
+      handles:
+        description: 'Only these Instagram pages, comma separated (e.g. isaa.uva,esn). Empty = all active pages'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -54,6 +62,7 @@ jobs:
           APIFY_API_KEY: ${{ secrets.APIFY_API_KEY }}
           OUTLIST_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           OUTLIST_FORCE: ${{ inputs.force || 'false' }}
+          OUTLIST_HANDLES: ${{ github.event_name == 'workflow_dispatch' && inputs.handles || '' }}
           PYTHONUTF8: '1'
         run: python scripts/scrapers/instagram_scraper.py
 

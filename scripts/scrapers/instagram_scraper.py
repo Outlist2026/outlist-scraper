@@ -21,7 +21,8 @@ Environment (names only, values live in repository secrets / the owner key file)
   SUPABASE_URL             https://<project-ref>.supabase.co  (or IG_GATEWAY_URL + SCRAPING_WEBHOOK_URL)
   OUTLIST_DRY_RUN=true     fetch and classify, post nothing, store nothing (still spends Apify credit)
   OUTLIST_FORCE=true       run even if automation is off
-  IG_MAX_PAGES=60  IG_POSTS_PER_PAGE=8  IG_MAX_RESULTS=500  IG_FIRST_RUN_DAYS=14
+  OUTLIST_HANDLES=a,b      only these pages (comma separated, with or without @); empty = all active pages. Use with OUTLIST_DRY_RUN to test a page
+  IG_MAX_PAGES=150  IG_POSTS_PER_PAGE=8  IG_MAX_RESULTS=1200  IG_FIRST_RUN_DAYS=14
   IG_SOURCE=apify|file     `file` reads IG_FIXTURE (a saved Apify dataset) instead of calling Apify: offline tests
 
 Offline self-check (no network, no key): python scripts/scrapers/instagram_scraper.py --validate
@@ -261,17 +262,54 @@ def write_step_summary(message: str) -> None:
         pass
 
 
-def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: bool, log=print) -> dict:
+DEFAULT_MAX_PAGES = 150
+DEFAULT_MAX_RESULTS = 1200
+
+
+def parse_handles(raw: str | None) -> list[str]:
+    """OUTLIST_HANDLES -> lowercase handles without @, deduplicated, in order, empty entries dropped."""
+    out: list[str] = []
+    for part in (raw or "").split(","):
+        h = part.strip().lstrip("@").strip().lower()
+        if h and h not in out:
+            out.append(h)
+    return out
+
+
+def exit_code(result: dict) -> int:
+    return 1 if result.get("fetch_failed") or result.get("all_unknown") else 0
+
+
+def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: bool, log=print, only_handles: list[str] | None = None) -> dict:
     auto = gw.call("automation")
     if not auto.get("enabled") and not force:
         log("IG scraping is switched off (feature flag or automation): nothing to do")
         return {"skipped": True}
-    pages = gw.call("pages").get("pages", [])[:max_pages]
+    pages = gw.call("pages").get("pages", [])
+    unknown: list[str] = []
+    if only_handles:  # targeted run: only the chosen active pages (BUG-F20261119-1)
+        active = {str(p["handle"]).lower() for p in pages}
+        unknown = [h for h in only_handles if h not in active]
+        for h in unknown:
+            log(f"not an active page: {h}")
+        if unknown and len(unknown) == len(only_handles):
+            msg = f"none of the requested handles is an active page: {', '.join(unknown)}"
+            log(f"::error::{msg}")
+            write_step_summary(msg)
+            return {"pages": 0, "unknown_handles": unknown, "all_unknown": True}
+        if unknown:
+            msg = f"not an active page: {', '.join(unknown)}"
+            log(f"::warning::{msg}")
+            write_step_summary(msg)
+        pages = [p for p in pages if str(p["handle"]).lower() in only_handles]
+    pages = pages[:max_pages]
     if not pages:
         log("No active Instagram pages")
-        return {"pages": 0}
+        return {"pages": 0, "unknown_handles": unknown} if only_handles else {"pages": 0}
     handles = [p["handle"] for p in pages]
     summary = {"pages": len(handles), "posts": 0, "events": 0, "posted": 0, "inserted": 0, "duplicates": 0, "filtered": 0, "errors": 0}
+    if unknown:
+        summary["unknown_handles"] = unknown
     answered = [False]  # True once the webhook told us what it really stored (BUG-F20261117-2)
     started = time.time()
 
@@ -323,7 +361,7 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
                     per_handle[h]["newest"] = v["newest"]
         if dry_run:
             log(f"[dry run] batch {i // BATCH + 1}: {len(batch)} posts -> {len(events)} events, counts {out.get('counts')}")
-            for e in events[:5]:
+            for e in (events if only_handles else events[:5]):
                 log(f"  - {e.get('title')} | date={e.get('raw_date_string')} time={e.get('raw_time_string')} venue={e.get('venue_name')} priority={e.get('priority')}")
             continue
         if events:
@@ -482,12 +520,70 @@ def validate() -> int:
     assert rl["events_inserted"] == 0, "the run log counts stored events, not sent ones: " + str(rl)
     assert "filtered 1" in rl["notes"] and "inserted 0" in rl["notes"], rl["notes"]
     assert any("PAST_EVENT" in str(l) for l in lines), "the drop reason is printed in the run log"
+    # BUG-F20261119-1: parse_handles and the targeted run (only_handles)
+    assert parse_handles(" @IsaA.UvA, esn ,,esn") == ["isaa.uva", "esn"], parse_handles(" @IsaA.UvA, esn ,,esn")
+    assert parse_handles("") == [] and parse_handles(None) == [], "blank handles"
+    assert DEFAULT_MAX_PAGES == 150 and DEFAULT_MAX_RESULTS == 1200, "defaults are 150 pages and 1200 results"
+
+    class MultiGw(FakeGw):
+        def call(self, action, **body):
+            if action == "pages":
+                calls.append((action, body))
+                return {"pages": [{"handle": "isaa.uva", "last_post_ts": None}, {"handle": "esn", "last_post_ts": None}, {"handle": "other", "last_post_ts": None}]}
+            return super().call(action, **body)
+
+    class RecAdapter:
+        def __init__(self):
+            self.fetched: list = []
+        def fetch(self, handles):
+            self.fetched.append(list(handles))
+            return FileAdapter(FIXTURE_PATH).fetch([])
+
+    calls.clear()
+    rec = RecAdapter()
+    s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lambda *_: None, only_handles=["esn"])
+    assert rec.fetched == [["esn"]] and s["pages"] == 1, (rec.fetched, s)
+    rec = RecAdapter(); lines = []
+    s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lines.append, only_handles=["nope"])
+    assert s == {"pages": 0, "unknown_handles": ["nope"], "all_unknown": True} and not rec.fetched, s
+    assert any("not an active page: nope" in str(l) for l in lines), lines
+    rec = RecAdapter()
+    s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lambda *_: None, only_handles=[])
+    assert rec.fetched == [["isaa.uva", "esn", "other"]], "blank list means all pages"
+    rec = RecAdapter()
+    s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lambda *_: None, only_handles=["esn", "nope"])
+    assert rec.fetched == [["esn"]] and s["unknown_handles"] == ["nope"], (rec.fetched, s)
+    # fix round 1: a targeted run that cannot scrape anything must fail, not end green
+    import tempfile
+    tmp_summary = os.path.join(tempfile.mkdtemp(), "summary.md")
+    old_env = {k: os.environ.get(k) for k in ("GITHUB_STEP_SUMMARY", "OUTLIST_HANDLES", "SUPABASE_URL", "SCRAPER_WEBHOOK_SECRET", "IG_SOURCE")}
+    try:
+        os.environ["GITHUB_STEP_SUMMARY"] = tmp_summary
+        rec = RecAdapter(); lines = []
+        s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lines.append, only_handles=["nope", "nada"])
+        assert s.get("all_unknown") and exit_code(s) == 1 and not rec.fetched, "all unknown handles exits non-zero"
+        assert any(str(l) == "::error::none of the requested handles is an active page: nope, nada" for l in lines), lines
+        assert "none of the requested handles is an active page: nope, nada" in open(tmp_summary, encoding="utf-8").read(), "step summary"
+        rec = RecAdapter(); lines = []
+        s = run_flow(MultiGw(), rec, lambda ev: (200, "ok"), max_pages=10, dry_run=True, force=False, log=lines.append, only_handles=["esn", "nope"])
+        assert rec.fetched == [["esn"]] and exit_code(s) == 0, "mixed handles still run the valid ones"
+        assert any(str(l) == "::warning::not an active page: nope" for l in lines), lines
+        assert "not an active page: nope" in open(tmp_summary, encoding="utf-8").read()
+        os.environ.update({"SUPABASE_URL": "https://x.invalid", "SCRAPER_WEBHOOK_SECRET": "t", "IG_SOURCE": "file", "OUTLIST_HANDLES": " , "})
+        assert main([]) == 1, "non-blank but empty handles is an error"
+        assert "OUTLIST_HANDLES has no valid handle" in open(tmp_summary, encoding="utf-8").read()
+    finally:
+        for k, v in old_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
     print("instagram_scraper --validate: OK")
     return 0
 
 
-def main() -> int:
-    if "--validate" in sys.argv:
+def main(argv: list[str] | None = None) -> int:
+    if "--validate" in (sys.argv if argv is None else argv):
         return validate()
     supabase_url = os.environ.get("SUPABASE_URL", "").rstrip("/")
     secret = os.environ.get("SCRAPER_WEBHOOK_SECRET", "")
@@ -501,9 +597,16 @@ def main() -> int:
         return 1
     dry_run = os.environ.get("OUTLIST_DRY_RUN", "").lower() in ("1", "true", "yes")
     force = os.environ.get("OUTLIST_FORCE", "").lower() in ("1", "true", "yes")
-    max_pages = int(os.environ.get("IG_MAX_PAGES", "60"))
+    max_pages = int(os.environ.get("IG_MAX_PAGES", str(DEFAULT_MAX_PAGES)))
     per_page = int(os.environ.get("IG_POSTS_PER_PAGE", "8"))
-    max_results = int(os.environ.get("IG_MAX_RESULTS", "500"))
+    max_results = int(os.environ.get("IG_MAX_RESULTS", str(DEFAULT_MAX_RESULTS)))
+    raw_handles = os.environ.get("OUTLIST_HANDLES")
+    only_handles = parse_handles(raw_handles)
+    if (raw_handles or "").strip() and not only_handles:  # typed something, but nothing usable: never fall back to all pages
+        msg = f"OUTLIST_HANDLES has no valid handle: {raw_handles!r}"
+        print(f"::error::{msg}", file=sys.stderr)
+        write_step_summary(msg)
+        return 1
     days = int(os.environ.get("IG_FIRST_RUN_DAYS", "14"))
     newer = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     gw = Gateway(gateway_url, secret)
@@ -515,11 +618,11 @@ def main() -> int:
         return status, body
 
     try:
-        result = run_flow(gw, adapter, post_events, max_pages=max_pages, dry_run=dry_run, force=force)
+        result = run_flow(gw, adapter, post_events, max_pages=max_pages, dry_run=dry_run, force=force, only_handles=only_handles)
     except Exception as exc:
         print(f"Run failed: {exc}", file=sys.stderr)
         return 1
-    return 1 if result.get("fetch_failed") else 0
+    return exit_code(result)
 
 
 if __name__ == "__main__":
