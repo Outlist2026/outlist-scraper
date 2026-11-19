@@ -1047,8 +1047,23 @@ def post_webhook_batched(webhook_url: str, secret: str, events: list[dict], auto
 
 # ─── Crawl4AI (lazy import so --validate runs without it) ────────────────────
 
-async def crawl_many(urls: list[str]) -> dict[str, tuple[int, str]]:
-    """Render all URLs with one shared headless Chromium. Returns url → (status, html)."""
+BLOCK_RETRY_WAIT_S = 8
+
+
+def is_blocked_page(status: int, html: str) -> bool:
+    """True when the crawl got a block / challenge / error page instead of the agenda (BUG-F20261118-4).
+    Such a page used to be parsed as an empty agenda and logged as a success with 0 events (Partyflock 403, Bitterzoet Cloudflare)."""
+    if status in (403, 429) or status >= 500 or status == 0:
+        return True
+    if not html or len(html) < 600:
+        return True
+    head = html[:4000].lower()
+    return "just a moment" in head and ("cloudflare" in html.lower() or "challenge" in head or "turnstile" in html.lower() or len(html) < 20000)
+
+
+async def crawl_many(urls: list[str], retry_blocked: bool = True) -> dict[str, tuple[int, str]]:
+    """Render all URLs with one shared headless Chromium. Returns url → (status, html).
+    A URL that came back blocked is tried once more after a pause (a 403 from Partyflock is often transient)."""
     from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
 
     browser_cfg = BrowserConfig(headless=True)
@@ -1071,6 +1086,19 @@ async def crawl_many(urls: list[str]) -> dict[str, tuple[int, str]]:
             except Exception as exc:  # per-source isolation
                 print(f"::warning::crawl failed for {url}: {exc}", file=sys.stderr)
                 results[url] = (0, "")
+        for url in [u for u, (st, h) in results.items() if retry_blocked and is_blocked_page(st, h)]:
+            await asyncio.sleep(BLOCK_RETRY_WAIT_S)
+            try:
+                res = await crawler.arun(url=url, config=run_cfg)
+                html = getattr(res, "html", "") or getattr(res, "cleaned_html", "") or ""
+                status = int(getattr(res, "status_code", 0) or 0)
+                if not html and getattr(res, "success", False):
+                    status = status or 200
+                if not is_blocked_page(status, html):
+                    print(f"[crawl] {url}: blocked on the first try (HTTP {results[url][0]}), fine on the retry")
+                    results[url] = (status, html)
+            except Exception as exc:
+                print(f"::warning::crawl retry failed for {url}: {exc}", file=sys.stderr)
     return results
 
 
@@ -1664,12 +1692,15 @@ async def main() -> int:
             crawl_status, page_html = rendered.get(source["url"], (0, ""))
             if not page_html:
                 raise RuntimeError(f"crawl returned no HTML (status {crawl_status})")
+            if is_blocked_page(crawl_status, page_html):
+                # reported as an error on the source (admin Scraping tab) instead of "success, 0 events"
+                raise RuntimeError(f"blocked by the site: HTTP {crawl_status}, {len(page_html)} bytes (retried once)")
             events = process_source(source, page_html, crawl_status, packs)
             pk = find_pack(packs, source.get("name", ""), source.get("site_name", ""), source["url"])
             if pk and pk.get("detail_times"):
                 need = [e["external_url"] for e in events if e.get("external_url") and not e.get("raw_time_string")][:DETAIL_MAX]
                 if need:
-                    fetched = await crawl_many(need)
+                    fetched = await crawl_many(need, retry_blocked=False)
                     got = enrich_with_details(events, {u: h for u, (_st, h) in fetched.items()})
                     print(f"[{label}] detail pages: {len(need)} fetched, {got} events got a clock time")
             # 2D: detail pages for events without a description (OUTLIST_DETAIL_DESCRIPTIONS=0 turns this off)
@@ -1677,7 +1708,7 @@ async def main() -> int:
                 need_d = [e["external_url"] for e in events
                           if e.get("external_url") and len(str(e.get("description") or "").strip()) < 25][:DETAIL_MAX]
                 if need_d:
-                    fetched_d = await crawl_many(need_d)
+                    fetched_d = await crawl_many(need_d, retry_blocked=False)
                     got_d = enrich_with_descriptions(events, {u: h for u, (_st, h) in fetched_d.items()})
                     print(f"[{label}] description pages: {len(need_d)} fetched, {got_d} events enriched")
             with_image, with_link, with_time = count_flags(events)
@@ -2089,6 +2120,13 @@ def validate() -> int:
         pk_q = find_pack(packs, nm, nm, url)
         check(f"{nm} pack: dedicated parser and fetch_url (the DB url is a 404 page)",
               bool(pk_q) and pk_q.get("list_parser") in EXCLUSIVE_LIST_PARSERS and (pk_q.get("fetch_url") or "").startswith("https://"), str(pk_q and pk_q.get("list_parser")))
+
+    # BUG-F20261118-4: a 403 / Cloudflare challenge page used to be parsed as an empty agenda and logged as "success, 0 events"
+    check("blocked pages: a 403 with a tiny body, a 429, a challenge page and an empty page are blocked",
+          is_blocked_page(403, "403 Forbidden") and is_blocked_page(429, "x" * 5000)
+          and is_blocked_page(200, "<title>Just a moment...</title>" + "x" * 3000) and is_blocked_page(0, ""))
+    check("blocked pages: a normal agenda page is not blocked",
+          not is_blocked_page(200, "<html><body>" + "<li>event</li>" * 400 + "</body></html>") and not is_blocked_page(200, "x" * 5000 + " 403 "))
 
     print(f"\n{'ALL CHECKS PASSED' if not failures else f'{len(failures)} CHECK(S) FAILED'}")
     return 0 if not failures else 1
