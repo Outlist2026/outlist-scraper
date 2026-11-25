@@ -1,0 +1,18 @@
+{
+ "_note": "Synthetic: what the wrapper must hand to scripts/scrapers/instagram_scraper.py main() through the environment (S5's runner reads these variables).",
+ "params": {
+  "handles": [
+   "@IAmsterdam",
+   "melkweg",
+   "bad handle",
+   "melkweg",
+   "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "ok.page_1"
+  ]
+ },
+ "expected_env": {
+  "OUTLIST_HANDLES": "iamsterdam,melkweg,ok.page_1",
+  "IG_FETCH": "direct",
+  "OUTLIST_DRY_RUN": "true"
+ }
+}

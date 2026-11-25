@@ -25,3 +25,6 @@ jobs:
       - run: python scripts/scrapers/instagram_scraper.py --validate
         env:
           PYTHONUTF8: '1'
+      - run: python -I scripts/scrapers/primary_sources/run.py --validate
+        env:
+          PYTHONUTF8: '1'

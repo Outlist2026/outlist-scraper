@@ -1,0 +1,32 @@
+{
+  "slug": "iamsterdam",
+  "name": "I amsterdam agenda",
+  "region_slug": "amsterdam",
+  "site_url": "https://www.iamsterdam.com",
+  "source_url": "https://www.iamsterdam.com/en/whats-on/calendar",
+  "source_prefix": "primary:iamsterdam",
+  "api": "GET /en/whats-on/calendar/<category>[?page=N] (embedded listing JSON) + GET detail page (schema.org Event JSON-LD)",
+  "enabled": true,
+  "env_switch": "OUTLIST_PRIMARY_IAMSTERDAM",
+  "params": { "categories": ["nightlife", "concerts-and-music", "festivals"] },
+  "reliability": 75,
+  "event_cap": 60,
+  "rate": { "min_interval_s": 2.0, "max_requests": 60 },
+  "robots": {
+    "url": "https://www.iamsterdam.com/robots.txt",
+    "checked_at": "2026-11-22",
+    "verdict": "allowed",
+    "note": "User-agent * disallows /en/whats-on/calendar* with a query string EXCEPT ?page= (explicit Allow, pagination must stay crawlable). Plain category paths and detail pages are not disallowed; only those two shapes are used. No Crawl-delay for generic agents; 2 s between requests."
+  },
+  "tos": {
+    "url": "https://www.iamsterdam.com/",
+    "checked_at": "2026-11-22",
+    "verdict": "unclear",
+    "note": "No terms page found at the usual paths (404 on /en/terms-and-conditions and /en/disclaimer). Official city-marketing site that publishes the agenda for visitors and its Event data as schema.org JSON-LD for reuse by search engines. Re-check before enabling at scale. A link back to the source page is kept (external_url)."
+  },
+  "risk": {
+    "level": "low",
+    "note": "Public, SEO-oriented structured data, polite rate (about 30 requests per run, twice a week). Yield is small on purpose: the listing publishes recurring series, not occurrences, so only single-day events are ingested."
+  },
+  "built_with": { "method": "manual network inspection (the reverse-api-engineer agent could not authenticate on the build machine: Claude Code not logged in)", "date": "2026-11-22" }
+}

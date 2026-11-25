@@ -1,0 +1,92 @@
+# Primary sources (R38 Train C): official feeds and APIs found with the /primary-source protocol. Plain Python (stdlib), no browser, no login.
+# Each source is read politely (see its meta.json: rate limit, robots.txt and ToS note) and posted to Outlist's scraping-webhook with
+# source_kind='primary'; those events get a review-priority boost and a "Primary" badge, and still go through the normal approval queue.
+#
+# Repository settings:
+#   Secret    SCRAPER_WEBHOOK_SECRET   same value as the edge function secret of the same name
+#   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
+#   Variable  OUTLIST_PRIMARY_<SLUG>   optional off switch per source: set to off (for example OUTLIST_PRIMARY_RA_CO=off)
+#
+# Switch off without touching code: disable this workflow, set the variable above, set meta.json "enabled": false, or set the row's
+# is_active=false in Outlist (owner SQL). Sources whose terms forbid bots ship OFF (ra_co, instagram).
+#
+# Test: run by hand with dry_run=true (default): every source is fetched and mapped, the events are printed, nothing is posted or stored.
+#       Add only=iamsterdam to run a single source.
+
+name: Scrape primary sources
+
+on:
+  schedule:
+    - cron: '15 6 * * 1,4'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Fetch and map, post and store nothing'
+        required: false
+        default: true
+        type: boolean
+      force:
+        description: 'Run even when automation is switched off in Outlist'
+        required: false
+        default: false
+        type: boolean
+      only:
+        description: 'Only this source slug (for example iamsterdam). Empty = all active sources'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scrape-primary
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Run the primary sources
+        env:
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SCRAPER_WEBHOOK_SECRET: ${{ secrets.SCRAPER_WEBHOOK_SECRET }}
+          OUTLIST_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          OUTLIST_FORCE: ${{ inputs.force || 'false' }}
+          OUTLIST_ONLY_SOURCE: ${{ github.event_name == 'workflow_dispatch' && inputs.only || '' }}
+          OUTLIST_PRIMARY_RA_CO: ${{ vars.OUTLIST_PRIMARY_RA_CO }}
+          OUTLIST_PRIMARY_IAMSTERDAM: ${{ vars.OUTLIST_PRIMARY_IAMSTERDAM }}
+          OUTLIST_PRIMARY_INSTAGRAM: ${{ vars.OUTLIST_PRIMARY_INSTAGRAM }}
+          PYTHONUTF8: '1'
+        run: python scripts/scrapers/primary_sources/run.py
+
+  notify-failure:
+    # A scheduled run that fails opens one issue in this repo -> e-mail to its watchers.
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: scrape
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Open or update failure issue
+        run: |
+          TITLE="Cron failing: Scrape primary sources"
+          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
+          if [ -z "$NUM" ]; then
+            gh issue create --title "$TITLE" --body "Scheduled run failed: $RUN_URL"
+          else
+            echo "Issue #$NUM already open - not adding more noise (latest failure: $RUN_URL)"
+          fi

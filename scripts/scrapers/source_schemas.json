@@ -84,7 +84,6 @@
         "link": "a",
         "description": ".event-card__description, .description"
       },
-      "fetch_url": "https://www.paradiso.nl/en/program",
       "list_parser": "paradiso_by_date"
     },
     {
@@ -179,8 +178,6 @@
           "shelteramsterdam.nl"
         ]
       },
-      "list_parser": "shelter_events",
-      "fetch_url": "https://shelteramsterdam.nl/",
       "selectors": {
         "event_container": ".agenda-item, article",
         "title": ".agenda-item__title, h3, h2",
@@ -201,8 +198,6 @@
           "thuishaven.nl"
         ]
       },
-      "list_parser": "thuishaven_accordion",
-      "fetch_url": "https://thuishaven.nl/",
       "selectors": {
         "event_container": ".event-item, article",
         "title": "h2, h3, .event-title",
@@ -265,7 +260,6 @@
           "ndsm.nl"
         ]
       },
-      "list_parser": "ndsm_agenda",
       "selectors": {
         "event_container": "article, .event, .agenda-item",
         "title": "h2, h3, .event-title",

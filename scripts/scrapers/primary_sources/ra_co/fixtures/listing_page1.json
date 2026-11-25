@@ -1,0 +1,578 @@
+{
+ "data": {
+  "eventListings": {
+   "totalResults": 357,
+   "data": [
+    {
+     "id": "12571025",
+     "listingDate": "2026-11-23T00:00:00.000",
+     "event": {
+      "id": "2571025",
+      "title": "Hard Mondays Amsterdam - HARD TECHNO NIGHT",
+      "date": "2026-11-23T00:00:00.000",
+      "startTime": "2026-11-23T23:00:00.000",
+      "endTime": "2026-11-24T04:00:00.000",
+      "contentUrl": "/events/2571025",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/fddc913b103595c6ff39470fc47f12ad819e7ef6.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "10",
+      "isTicketed": true,
+      "content": "Hard Mondays is a new Hard Techno night at John Doe. Every week, expect the hardest, fastest-paced Hard Techno event in town! Headlined by your favourite International Hard Techno superstars and local legends. \n",
+      "attending": 6,
+      "interestedCount": 6,
+      "venue": {
+       "id": "109140",
+       "name": "John Doe",
+       "address": "Rembrandtplein 31, 1017 CT Amsterdam, Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.366478,
+        "longitude": 4.897596
+       }
+      },
+      "artists": [
+       {
+        "name": "NO1ELSE"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "We Build Events"
+       },
+       {
+        "name": "Hard Mondays Amsterdam"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12565425",
+     "listingDate": "2026-11-23T00:00:00.000",
+     "event": {
+      "id": "2565425",
+      "title": "Cheeky Monday: DJ Hybrid",
+      "date": "2026-11-23T00:00:00.000",
+      "startTime": "2026-11-23T23:00:00.000",
+      "endTime": "2026-11-24T04:00:00.000",
+      "contentUrl": "/events/2565425",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/8c45c2972e2b89cd67a238935ce94833c61ad0ce.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "€8.50-€13.50",
+      "isTicketed": false,
+      "content": "CHEEKY MONDAY!!!\nWeekly Drum'n'Bass Junglistics!",
+      "attending": 1,
+      "interestedCount": 1,
+      "venue": {
+       "id": "2693",
+       "name": "Melkweg",
+       "address": "Lijnbaansgracht 234/a, 1017 Binnenstad, Amsterdam",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.364837,
+        "longitude": 4.881273
+       }
+      },
+      "artists": [
+       {
+        "name": "DJ Hybrid"
+       },
+       {
+        "name": "Insom"
+       }
+      ],
+      "promoters": []
+     }
+    },
+    {
+     "id": "12556743",
+     "listingDate": "2026-11-24T00:00:00.000",
+     "event": {
+      "id": "2556743",
+      "title": "[PHANTOM GROUP] KLUBNACHT w 2SAKURA / ALTBASE / DC92 / C2C / Gian",
+      "date": "2026-11-24T00:00:00.000",
+      "startTime": "2026-11-24T23:00:00.000",
+      "endTime": "2026-11-25T04:00:00.000",
+      "contentUrl": "/events/2556743",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/22e355b9314c5d1d4890921dafa9f06e5856f6f8.png",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "10",
+      "isTicketed": true,
+      "content": "PHANTOM GROUP AMSTERDAM\n\nAn independent platform for underground electronic music, built around energy, discovery and artists who deserve to be heard.\n\nNow entering our second year, Phantom Group is growing into a consistent series of club nights, events and community-driven experiences across Amste",
+      "attending": 25,
+      "interestedCount": 25,
+      "venue": {
+       "id": "109140",
+       "name": "John Doe",
+       "address": "Rembrandtplein 31, 1017 CT Amsterdam, Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.366478,
+        "longitude": 4.897596
+       }
+      },
+      "artists": [
+       {
+        "name": "Gian"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "RIZE"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12553528",
+     "listingDate": "2026-11-24T00:00:00.000",
+     "event": {
+      "id": "2553528",
+      "title": "Techno Tuesday Amsterdam, Dexon & Jayzo extended sets",
+      "date": "2026-11-24T00:00:00.000",
+      "startTime": "2026-11-24T23:30:00.000",
+      "endTime": "2026-11-25T05:00:00.000",
+      "contentUrl": "/events/2553528",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/a8b93eb3abd064777a30d406414eadec26a1d4ac.jpg",
+        "type": "FLYERFRONT"
+       },
+       {
+        "filename": "https://images.ra.co/5cbb4839bcc5f0d137c57e480a1d25d4ecf23614.jpg",
+        "type": "FLYERBACK"
+       }
+      ],
+      "cost": "0.0",
+      "isTicketed": false,
+      "content": "What?! Techno on a Tuesday? Yes, really! For over 17 years, Techno Tuesday is organizing the events for the love of the music and to give people a night to enjoy. Resident DJ Dexon curates the lineup, featuring three artists who each get plenty of time to share their passion. From the latest interna",
+      "attending": 3,
+      "interestedCount": 3,
+      "venue": {
+       "id": "2693",
+       "name": "Melkweg",
+       "address": "Lijnbaansgracht 234/a, 1017 Binnenstad, Amsterdam",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.364837,
+        "longitude": 4.881273
+       }
+      },
+      "artists": [
+       {
+        "name": "Dexon"
+       },
+       {
+        "name": "Jayzo"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "InDeep'n'Dance Records"
+       },
+       {
+        "name": "Techno Tuesday Amsterdam"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12517481",
+     "listingDate": "2026-11-24T00:00:00.000",
+     "event": {
+      "id": "2517481",
+      "title": "Liturgy (solo)",
+      "date": "2026-11-24T00:00:00.000",
+      "startTime": "2026-11-24T20:00:00.000",
+      "endTime": "2026-11-24T23:59:00.000",
+      "contentUrl": "/events/2517481",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/0d3e45b51890d57a61c09cb01d5bb99829158ef1.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "",
+      "isTicketed": false,
+      "content": "Liturgy is het project van Haela Ravenna Hunt-Hendrix, wiens verlangende, energieke “transcendental black metal” zich beweegt tussen metal, kunstmuziek en heilig ritueel. De huidige bezetting bestaat uit Mario Miron (gitaar), Tia Vincent-Clark (bas) en Leo Didkovsky (drums). De band wordt geprezen o",
+      "attending": 1,
+      "interestedCount": 1,
+      "venue": {
+       "id": "157325",
+       "name": "Cinetol",
+       "address": "Tolstraat 182, 1074VM Amsterdam",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.352752,
+        "longitude": 4.906672
+       }
+      },
+      "artists": [],
+      "promoters": []
+     }
+    },
+    {
+     "id": "12521101",
+     "listingDate": "2026-11-25T00:00:00.000",
+     "event": {
+      "id": "2521101",
+      "title": "RAVELAND x 20kHz : Hard Techno/ Bounce/ Groove",
+      "date": "2026-11-25T00:00:00.000",
+      "startTime": "2026-11-25T23:00:00.000",
+      "endTime": "2026-11-26T04:00:00.000",
+      "contentUrl": "/events/2521101",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/cd5f4aae46372fd6291b9f08c542ad63dcd250d0.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "10",
+      "isTicketed": true,
+      "content": "Amsterdam Nights & Raveland promotes the Harder Newschool evolving Sound of Techno, Hard Techno, Post Techno & Neo Rave. \n\nWe believe in the synthesis of genres and erasing boring rules of how  the music in Techno Rave should be.\n\nOur mission is to present visionary innovative extraordinary talented",
+      "attending": 45,
+      "interestedCount": 45,
+      "venue": {
+       "id": "109140",
+       "name": "John Doe",
+       "address": "Rembrandtplein 31, 1017 CT Amsterdam, Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.366478,
+        "longitude": 4.897596
+       }
+      },
+      "artists": [
+       {
+        "name": "STVN (2)"
+       },
+       {
+        "name": "R3MY"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "Amsterdam Nights"
+       },
+       {
+        "name": "20kHz"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12507715",
+     "listingDate": "2026-11-25T00:00:00.000",
+     "event": {
+      "id": "2507715",
+      "title": "RAVING CHARLIE: Hard Techno / Rave w/ 2FASTKEEPUP [IE] / POKEDECKS / UTOPIA / KYNØ",
+      "date": "2026-11-25T00:00:00.000",
+      "startTime": "2026-11-25T23:00:00.000",
+      "endTime": "2026-11-26T04:00:00.000",
+      "contentUrl": "/events/2507715",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/36baa9effbf9f9602e74c15ae4081db2b07dffb8.png",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "10",
+      "isTicketed": true,
+      "content": "Amsterdam’s Weekly Hard Techno Rave\n\nRaving Charlie is Amsterdam’s midweek home for hard techno, neo-rave, hardcore, hard bounce and everything in between. Built around the local scene, Raving Charlie showcases Amsterdam’s most exciting upcoming DJ’s, while welcoming international guests who share t",
+      "attending": 66,
+      "interestedCount": 66,
+      "venue": {
+       "id": "243352",
+       "name": "nachbar",
+       "address": "Nieuwezijds Voorburgwal 169a",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.37,
+        "longitude": 4.89
+       }
+      },
+      "artists": [],
+      "promoters": [
+       {
+        "name": "RavingCharlie"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12583693",
+     "listingDate": "2026-11-25T00:00:00.000",
+     "event": {
+      "id": "2583693",
+      "title": "Joe Armon-Jones & Maxwell Owin",
+      "date": "2026-11-25T00:00:00.000",
+      "startTime": "2026-11-25T20:30:00.000",
+      "endTime": "2026-11-25T22:00:00.000",
+      "contentUrl": "/events/2583693",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/11ee43dda0f575440fb91f2f3f6bed671073c068.jpg",
+        "type": "FLYERFRONT"
+       },
+       {
+        "filename": "https://images.ra.co/0bf1d51e0f955f5a8498130e4a2d67b304eb83d5.jpg",
+        "type": "FLYERBACK"
+       }
+      ],
+      "cost": "25",
+      "isTicketed": false,
+      "content": "Keyboardist Joe Armon-Jones and producer Maxwell Owin have been working together for ten years, and they are marking the occasion with a tour built around the record where it all began: Idiom. The long sold-out album is also being reissued on vinyl. The two first started making music together as hou",
+      "attending": 0,
+      "interestedCount": 0,
+      "venue": {
+       "id": "4392",
+       "name": "Bimhuis",
+       "address": "Piet Heinkade 3; 1019 Zeeburg; Amsterdam; Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.378152,
+        "longitude": 4.912829
+       }
+      },
+      "artists": [],
+      "promoters": [
+       {
+        "name": "Bimhuis"
+       },
+       {
+        "name": "Steppin' Into Tomorrow"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12571239",
+     "listingDate": "2026-11-26T00:00:00.000",
+     "event": {
+      "id": "2571239",
+      "title": "Amsterdam Techno Sessions",
+      "date": "2026-11-26T00:00:00.000",
+      "startTime": "2026-11-26T23:00:00.000",
+      "endTime": "2026-11-27T04:00:00.000",
+      "contentUrl": "/events/2571239",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/563a7bbde4c610df7ee68b9b5a302ae96e128856.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "10",
+      "isTicketed": true,
+      "content": "Amsterdam Techno Sessions is a weekly Techno event held every Thursday in Amsterdam.\nEach week, local and international artists are invited to showcase their work and share their personal interpretations of techno.\n",
+      "attending": 7,
+      "interestedCount": 7,
+      "venue": {
+       "id": "109140",
+       "name": "John Doe",
+       "address": "Rembrandtplein 31, 1017 CT Amsterdam, Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.366478,
+        "longitude": 4.897596
+       }
+      },
+      "artists": [
+       {
+        "name": "Marco Ramos"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "We Build Events"
+       },
+       {
+        "name": "Amsterdam Techno Sessions"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12573482",
+     "listingDate": "2026-11-26T00:00:00.000",
+     "event": {
+      "id": "2573482",
+      "title": "FERMI presents... From Start to Finish",
+      "date": "2026-11-26T00:00:00.000",
+      "startTime": "2026-11-26T22:00:00.000",
+      "endTime": "2026-11-27T03:00:00.000",
+      "contentUrl": "/events/2573482",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/09cac26f51f987b3a6b1fb84828dae6a8294b560.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "",
+      "isTicketed": true,
+      "content": "FERMI cordially invites you to its first all-nighter as part of its monthly event series at Radio Radio. Jiminal  & Meniac (FERMI) and Daiki (Rush Hour) take control for 5 hours, going from cigarette-stained pop, rock and disco to Chicago and Detroit house and techno. Always Balearic at heart, and r",
+      "attending": 4,
+      "interestedCount": 4,
+      "venue": {
+       "id": "156530",
+       "name": "Radio Radio",
+       "address": "Pazzanistraat 3",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.385818,
+        "longitude": 4.871839
+       }
+      },
+      "artists": [
+       {
+        "name": "Jiminal (2)"
+       },
+       {
+        "name": "Meniac"
+       },
+       {
+        "name": "Daiki Fukami"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "Radio Radio"
+       },
+       {
+        "name": "FERMI"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12573381",
+     "listingDate": "2026-11-26T00:00:00.000",
+     "event": {
+      "id": "2573381",
+      "title": "Source",
+      "date": "2026-11-26T00:00:00.000",
+      "startTime": "2026-11-26T23:00:00.000",
+      "endTime": "2026-11-27T05:00:00.000",
+      "contentUrl": "/events/2573381",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/fd0432992c64cf6291a95bd06ec6792b3c6c3ae7.png",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "0",
+      "isTicketed": true,
+      "content": "Not your average Thursday.\n\nThis week, SOURCE is bringing something special to Supperclub Amsterdam.\n\nThe same energy you know and love, but with a little extra. Expect the best Hits & House, familiar faces, unexpected moments and a night worth talking about.\n\nSome Thursdays just hit different. This",
+      "attending": 312,
+      "interestedCount": 312,
+      "venue": {
+       "id": "2684",
+       "name": "Supperclub",
+       "address": "Singel 460, 1017 AW Amsterdam",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.367547,
+        "longitude": 4.888833
+       }
+      },
+      "artists": [],
+      "promoters": [
+       {
+        "name": "Marijn"
+       }
+      ]
+     }
+    },
+    {
+     "id": "12538551",
+     "listingDate": "2026-11-26T00:00:00.000",
+     "event": {
+      "id": "2538551",
+      "title": "Madam by Night invites: MONARK x HAUSIN' COLLECTIVE",
+      "date": "2026-11-26T00:00:00.000",
+      "startTime": "2026-11-26T21:00:00.000",
+      "endTime": "2026-11-27T03:00:00.000",
+      "contentUrl": "/events/2538551",
+      "flyerFront": null,
+      "images": [
+       {
+        "filename": "https://images.ra.co/1baa239f91cf3fecf059b0862957891ae1769f26.jpg",
+        "type": "FLYERFRONT"
+       }
+      ],
+      "cost": "12,50",
+      "isTicketed": true,
+      "content": "When the sun sets and the clock strikes, Madam turns the volume up and puts her tables aside to morph into the city’s highest dancefloor. Every Friday and Saturday, Madam invites local and international friends, DJ’s and organizations to join her for a music-filled weekend.\n\nINFO\nTime: 21:00 - 3:00 ",
+      "attending": 7,
+      "interestedCount": 7,
+      "venue": {
+       "id": "122376",
+       "name": "Madam",
+       "address": "Overhoeksplein 3, 1031 KS Amsterdam, Netherlands",
+       "area": {
+        "name": "Amsterdam"
+       },
+       "location": {
+        "latitude": 52.384098,
+        "longitude": 4.902859
+       }
+      },
+      "artists": [
+       {
+        "name": "Okeam"
+       }
+      ],
+      "promoters": [
+       {
+        "name": "Madam Amsterdam"
+       }
+      ]
+     }
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,5 @@
+# Optional: OCR of Instagram posters (R38 B2). Without these packages the Instagram scraper runs on the caption alone.
+# CPU only, no model download at run time (the ONNX models ship inside the wheel). Used by .github/workflows/instagram-scrape.yml.
+rapidocr-onnxruntime==1.4.4
+pillow>=10,<12
+numpy>=1.26,<3

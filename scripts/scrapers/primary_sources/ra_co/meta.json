@@ -1,0 +1,32 @@
+{
+  "slug": "ra_co",
+  "name": "Resident Advisor (ra.co) Amsterdam",
+  "region_slug": "amsterdam",
+  "site_url": "https://ra.co",
+  "source_url": "https://ra.co/events/nl/amsterdam",
+  "source_prefix": "primary:ra_co",
+  "api": "POST https://ra.co/graphql (eventListings, public, no login)",
+  "enabled": false,
+  "env_switch": "OUTLIST_PRIMARY_RA_CO",
+  "params": { "area_id": 29 },
+  "reliability": 80,
+  "event_cap": 300,
+  "rate": { "min_interval_s": 2.0, "max_requests": 8 },
+  "robots": {
+    "url": "https://ra.co/robots.txt",
+    "checked_at": "2026-11-22",
+    "verdict": "allowed",
+    "note": "User-agent * disallows /pro, /user, /api, /my-tickets, /widget and some paths. /graphql and /events are not disallowed. ClaudeBot and many AI crawlers are blocked by name; OutlistBot is not named."
+  },
+  "tos": {
+    "url": "https://ra.co/terms",
+    "checked_at": "2026-11-22",
+    "verdict": "restricted",
+    "note": "Terms of Use: access to the Website by automated devices, scripts, bots, spiders, crawlers or scrapers is forbidden without prior written authorisation (search engines excepted)."
+  },
+  "risk": {
+    "level": "high",
+    "note": "The ToS forbid automated access. The source is built and tested offline but ships OFF (enabled=false, scraping_sources.is_active=false). Turn it on only after written permission from Resident Advisor (partnership / data licence) or an explicit owner decision to accept the risk. Likely consequences: IP block or a legal notice; no user data is involved."
+  },
+  "built_with": { "method": "manual network inspection (reverse-api-engineer agent could not authenticate on the build machine: Claude Code not logged in)", "date": "2026-11-22" }
+}

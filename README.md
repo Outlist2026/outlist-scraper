@@ -31,3 +31,7 @@ as a repository secret, and the only things this code can do on the Outlist side
 ## Instagram scraper
 
 `scripts/scrapers/instagram_scraper.py` and `.github/workflows/instagram-scrape.yml` fetch the newest posts of the Instagram pages an Outlist admin added (Apify, no login, no browser). Outlist decides which posts are events with its own small local model and puts them in the normal approval queue; nothing is published automatically. Extra secret: `APIFY_API_KEY`. Start with **Actions → Scrape Instagram → Run workflow** with `dry_run` ticked (default). Offline check: `python scripts/scrapers/instagram_scraper.py --validate`.
+
+## Primary sources
+
+`scripts/scrapers/primary_sources/` holds one folder per official feed or API (`client.py`, `mapper.py`, `meta.json` with the robots.txt and terms-of-use note and the risk level, `fixtures/`, `test_offline.py`). `.github/workflows/primary-scrape.yml` runs them politely and posts the events with `source_kind=primary`. Sources whose terms forbid bots ship switched off. Dry run: **Actions → Scrape primary sources → Run workflow** (default `dry_run`). Offline check: `python scripts/scrapers/primary_sources/run.py --validate`. New sources are added only with the `/primary-source` protocol of the main repository.

@@ -1,0 +1,34 @@
+{
+  "slug": "instagram",
+  "name": "Instagram official pages (direct web_profile_info)",
+  "region_slug": "amsterdam",
+  "site_url": "https://www.instagram.com",
+  "source_url": "https://www.instagram.com/api/v1/users/web_profile_info/",
+  "source_prefix": "primary:instagram",
+  "mode": "delegate",
+  "api": "S5's DirectFetcher (GET web_profile_info, no login) + ig-gateway classify, started through instagram_scraper.main() for the handles below only",
+  "enabled": false,
+  "env_switch": "OUTLIST_PRIMARY_INSTAGRAM",
+  "params": { "handles": ["iamsterdam", "melkweg", "paradisoamsterdam"] },
+  "reliability": 70,
+  "event_cap": 60,
+  "rate": { "min_interval_s": 4.0, "max_requests": 12 },
+  "owner_override": "Plan R38 Train C (approved by the owner 22/11/2026) names the instagram web_profile_info pilot; robots.txt disallows everything, so it ships OFF until the owner switches it on",
+  "robots": {
+    "url": "https://www.instagram.com/robots.txt",
+    "checked_at": "2026-11-22",
+    "verdict": "disallowed",
+    "note": "User-agent * Disallow: / and a notice that automated data collection is prohibited without express written permission from Instagram (Meta Automated Data Collection Terms)."
+  },
+  "tos": {
+    "url": "https://help.instagram.com/581066165581870",
+    "checked_at": "2026-11-22",
+    "verdict": "restricted",
+    "note": "Instagram/Meta terms and the robots.txt notice forbid automated collection without written permission."
+  },
+  "risk": {
+    "level": "high",
+    "note": "Login-less scraping against an explicit prohibition. Possible IP block of the GitHub runner or a legal notice; only public organiser pages are read, no personal data of private users. Ships OFF (enabled=false and scraping_sources.is_active=false). Same exposure as S5's direct fetch: the owner decides to switch it on. The live probe was NOT run for this source."
+  },
+  "built_with": { "method": "wrapper over S5's fetcher; no own network code", "date": "2026-11-22" }
+}

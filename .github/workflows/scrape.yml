@@ -6,8 +6,8 @@
 #   Secret    SCRAPER_WEBHOOK_SECRET   same value as the edge function secret of the same name
 #   Variable  SUPABASE_URL             https://<project-ref>.supabase.co   (not a secret)
 #
-# This repository owns the cron (the private repo's schedule is off since 16/11/2026). A failed scheduled run opens one issue here.
-# If the private copy is ever run by hand too, duplicates are absorbed by the webhook (URL / hash dedup).
+# The private Outlist repository keeps its own copy of this workflow: two independent runners. Duplicates are absorbed by the webhook
+# (URL / hash dedup, merge of better data), so running both is safe.
 
 name: Scrape events
 
@@ -53,7 +53,7 @@ jobs:
       - name: Install Crawl4AI + headless Chromium
         run: |
           set -euo pipefail
-          pip install "crawl4ai==0.9.5"  # pinned: 0.9 changed JsonCssExtractionStrategy.run(); bump deliberately after python scripts/scrapers/outlist_crawler.py --validate
+          pip install "crawl4ai>=0.9.0"
           crawl4ai-setup
       - name: Run the crawler
         env:
@@ -63,27 +63,3 @@ jobs:
           OUTLIST_DRY_RUN: ${{ inputs.dry_run || 'false' }}
           OUTLIST_FORCE: ${{ inputs.force || 'false' }}
         run: python scripts/scrapers/outlist_crawler.py
-
-  notify-failure:
-    # A scheduled run that fails (gateway rejects the secret, Chromium/crawl4ai broken) opens one issue in this repo -> e-mail to its watchers.
-    if: ${{ failure() && github.event_name == 'schedule' }}
-    needs: scrape
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    permissions:
-      contents: read
-      issues: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-    steps:
-      - name: Open or update failure issue
-        run: |
-          TITLE="Cron failing: Scrape events"
-          NUM=$(gh issue list --state open --search "\"$TITLE\" in:title" --json number,title --jq "[.[] | select(.title == \"$TITLE\")][0].number // empty")
-          if [ -z "$NUM" ]; then
-            gh issue create --title "$TITLE" --body "Scheduled run failed: $RUN_URL"
-          else
-            echo "Issue #$NUM already open - not adding more noise (latest failure: $RUN_URL)"
-          fi

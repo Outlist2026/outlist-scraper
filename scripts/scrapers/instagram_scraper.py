@@ -2,7 +2,8 @@
 """Outlist Instagram scraper (S5): fetch the newest posts of the pages an admin added, let Outlist classify them, post the events.
 
 Runs on GitHub Actions of the PUBLIC runner repository (free minutes) and, with the schedule off, in the private repository.
-Standard library only: no browser, no login, no Instagram credentials. The posts come from Apify (adapter below); the decision
+Standard library only (OCR is an optional extra: requirements-ocr.txt): no browser, no login, no Instagram credentials. The posts come first
+from Instagram's public web endpoint without login (DirectFetcher), and from Apify (adapter below) for the pages it cannot read; the decision
 "is this post an event?" is made by Outlist's local model inside the ig-gateway edge function, never by an LLM and never here.
 
 Flow
@@ -15,7 +16,8 @@ Flow
   7. ig-gateway `page_result`  -> per page outcome for the admin page.
 
 Environment (names only, values live in repository secrets / the owner key file):
-  APIFY_API_KEYS           Apify tokens, comma separated (free accounts in rotation: a quota answer moves to the next key)
+  APIFY_API_KEYS           Apify tokens, comma separated (free accounts in rotation: a quota answer moves to the next key). The regional keys stay on the
+                           server (ig-gateway `apify_fetch`, R38 #211/#214); the runner no longer needs any Apify key
   APIFY_API_KEY            single Apify token, used when APIFY_API_KEYS is not set
   SCRAPER_WEBHOOK_SECRET   same secret as scraper-gateway / scraping-webhook
   SUPABASE_URL             https://<project-ref>.supabase.co  (or IG_GATEWAY_URL + SCRAPING_WEBHOOK_URL)
@@ -23,6 +25,10 @@ Environment (names only, values live in repository secrets / the owner key file)
   OUTLIST_FORCE=true       run even if automation is off
   OUTLIST_HANDLES=a,b      only these pages (comma separated, with or without @); empty = all active pages. Use with OUTLIST_DRY_RUN to test a page
   IG_MAX_PAGES=150  IG_POSTS_PER_PAGE=8  IG_MAX_RESULTS=1200  IG_FIRST_RUN_DAYS=14
+  IG_FETCH=auto|direct|apify   auto (default) = direct fetch without login first, Apify for blocked pages; direct = never Apify; apify = Apify only (old behaviour)
+  IG_DIRECT_MAX=60  IG_DIRECT_MIN_DELAY=2.5  IG_DIRECT_MAX_DELAY=6   per-run cap of direct pages and the jittered pause between them
+  IG_OCR=auto|on|off       RapidOCR ONNX on the cover + first 3 carousel images (auto: only when the package is installed)
+  IG_OCR_CACHE_DIR=.ocr_cache  IG_OCR_MAX_IMAGES=800  IG_OCR_MAX_SECONDS=900
   IG_SOURCE=apify|file     `file` reads IG_FIXTURE (a saved Apify dataset) instead of calling Apify: offline tests
 
 Offline self-check (no network, no key): python scripts/scrapers/instagram_scraper.py --validate
@@ -30,8 +36,11 @@ Offline self-check (no network, no key): python scripts/scrapers/instagram_scrap
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import random
+import re
 import sys
 import time
 import urllib.error
@@ -105,12 +114,14 @@ def normalize_apify_item(it: dict) -> dict | None:
         "url": it.get("url") or f"https://www.instagram.com/p/{shortcode}/",
         "likes": it.get("likesCount") if isinstance(it.get("likesCount"), int) else None,
         "comments": it.get("commentsCount") if isinstance(it.get("commentsCount"), int) else None,
+        "children": [u for u in (_https((c or {}).get("displayUrl")) for c in (it.get("childPosts") or [])) if u][:10],
+        "collaborators": _handles([(c or {}).get("username") for c in (it.get("coauthorProducers") or [])]),
+        "source": "apify",
     }
 
 
 # ─── Several Apify keys on the free plan (S7, BUG-F20261110-45) ──────────────
 # Twin of supabase/functions/_shared/apify/keys.ts: keep the two in sync (same case table in tests/apify/keys.test.ts).
-import re
 
 _LIMIT_WORDS = re.compile(r"(usage|limit|credit|quota|exceed|payment|insufficient)", re.I)
 
@@ -232,6 +243,431 @@ class ApifyAdapter:
         return [p for p in (normalize_apify_item(i) for i in items) if p]
 
 
+# ─── Direct fetch without login (R38 B1) ─────────────────────────────────────
+# The web app of Instagram asks `web_profile_info` for a public profile; the answer holds the profile (bio, link) and the newest ~12 posts
+# with carousel children and co-authors. No login, no cookie. Polite: jittered pause between pages, a per-run cap, and a block detector that
+# stops direct fetching for the rest of the run at the first sign of trouble (the remaining pages go to Apify, see HybridAdapter).
+
+IG_APP_ID = "936619743392459"  # the public app id of the Instagram web app (sent by every browser visiting instagram.com)
+DIRECT_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
+DIRECT_URL = "https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}"
+_HANDLE_OK = re.compile(r"^[a-z0-9._]{1,30}$")
+_CDN_HOSTS = (".cdninstagram.com", ".fbcdn.net", ".instagram.com")
+
+
+class DirectBlocked(Exception):
+    """Instagram refused a login-less request (401/429/redirect to login/checkpoint): stop direct fetching, use the fallback."""
+    def __init__(self, reason: str):
+        super().__init__(reason)
+        self.reason = reason
+
+
+class DirectError(Exception):
+    """This page cannot be read directly. fallback=True: transient (5xx, network), Apify may still get it; False: the page is missing or private."""
+    def __init__(self, why: str, fallback: bool = False):
+        super().__init__(why)
+        self.fallback = fallback
+
+
+def http_get_raw(url: str, headers: dict | None = None, timeout: int = 30):
+    """GET that follows redirects and returns (status, final_url, text). Never raises on an HTTP error status."""
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.geturl(), resp.read(3_000_000).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.geturl() or url, exc.read(200_000).decode("utf-8", errors="replace")
+
+
+def classify_direct_response(status: int, final_url: str, text: str) -> str | None:
+    """None = a normal answer. Otherwise the reason of the block: auth, rate_limit, forbidden, login, checkpoint."""
+    if status == 401:
+        return "auth"
+    if status == 429:
+        return "rate_limit"
+    if status == 403:
+        return "forbidden"
+    if "/accounts/login" in (final_url or ""):
+        return "login"
+    body = (text or "").lstrip()
+    data = None
+    if body[:1] == "{":
+        try:
+            data = json.loads(body)
+        except ValueError:
+            data = None
+    if isinstance(data, dict):
+        msg = str(data.get("message") or "")
+        if "checkpoint" in msg or "challenge" in msg:
+            return "checkpoint"
+        if data.get("require_login") is True:
+            return "login"
+        return None
+    if status == 200 and body[:1] == "<":  # an HTML page where JSON was expected: the login wall
+        return "login"
+    return None
+
+
+def _iso(ts) -> str | None:
+    return datetime.fromtimestamp(int(ts), timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z") if isinstance(ts, (int, float)) and ts > 0 else None
+
+
+def _https(url) -> str | None:
+    return url if isinstance(url, str) and url.startswith("https://") and len(url) <= 1000 else None
+
+
+def _handles(names) -> list[str]:
+    out: list[str] = []
+    for n in names:
+        h = str(n or "").strip().lower()
+        if _HANDLE_OK.match(h) and h not in out:
+            out.append(h)
+    return out[:10]
+
+
+def parse_web_profile(payload: dict, page: str) -> tuple[dict, list[dict]]:
+    """web_profile_info JSON -> (page info, IgPost list). Raises DirectError for a missing or private page."""
+    user = ((payload or {}).get("data") or {}).get("user")
+    if not isinstance(user, dict):
+        raise DirectError("page not found")
+    if user.get("is_private"):
+        raise DirectError("page is private")
+    info = {"bio": (user.get("biography") or "")[:500] or None, "externalUrl": _https(user.get("external_url")), "fullName": user.get("full_name")}
+    posts: list[dict] = []
+    for edge in (((user.get("edge_owner_to_timeline_media") or {}).get("edges")) or []):
+        n = edge.get("node") or {}
+        sc = n.get("shortcode")
+        if not sc:
+            continue
+        owner = str((n.get("owner") or {}).get("username") or page).lower()
+        typ = str(n.get("__typename") or "")
+        kind = "carousel" if typ == "GraphSidecar" else "video" if typ == "GraphVideo" or n.get("is_video") else "image"
+        collabs = _handles([(c or {}).get("username") for c in (n.get("coauthor_producers") or [])])
+        if owner != page and page not in collabs:  # it is in this page's feed, so this page shares it
+            collabs.append(page)
+        caps = ((n.get("edge_media_to_caption") or {}).get("edges")) or []
+        dims = n.get("dimensions") or {}
+        like = (n.get("edge_media_preview_like") or {}).get("count")
+        com = (n.get("edge_media_to_comment") or {}).get("count")
+        posts.append({
+            "shortcode": sc, "handle": owner, "caption": ((caps[0].get("node") or {}).get("text") or "")[:5000] if caps else "",
+            "takenAt": _iso(n.get("taken_at_timestamp")), "type": kind, "width": dims.get("width"), "height": dims.get("height"),
+            "imageUrl": _https(n.get("display_url")), "url": f"https://www.instagram.com/p/{sc}/",
+            "likes": like if isinstance(like, int) else None, "comments": com if isinstance(com, int) else None,
+            "children": [u for u in (_https(((c or {}).get("node") or {}).get("display_url")) for c in ((n.get("edge_sidecar_to_children") or {}).get("edges") or [])) if u][:10],
+            "collaborators": collabs, "bio": info["bio"], "externalUrl": info["externalUrl"], "source": "direct",
+        })
+    return info, posts
+
+
+class DirectFetcher:
+    def __init__(self, http=None, sleep=time.sleep, rng=random.uniform, min_delay: float = 2.5, max_delay: float = 6.0):
+        self.http, self.sleep, self.rng = http or http_get_raw, sleep, rng
+        self.min_delay, self.max_delay = min_delay, max_delay
+        self.requests = 0
+
+    def fetch_profile(self, handle: str) -> tuple[dict, list[dict]]:
+        if self.requests:  # polite: a jittered pause between two pages (none before the first)
+            self.sleep(self.rng(self.min_delay, self.max_delay))
+        self.requests += 1
+        headers = {"User-Agent": DIRECT_UA, "X-IG-App-ID": IG_APP_ID, "X-Requested-With": "XMLHttpRequest", "Accept": "*/*",
+                   "Referer": f"https://www.instagram.com/{handle}/"}
+        try:
+            status, final_url, text = self.http(DIRECT_URL.format(handle=urllib.parse.quote(handle)), headers=headers, timeout=30)
+        except (urllib.error.URLError, OSError, TimeoutError) as exc:
+            raise DirectError(f"network: {exc}", fallback=True)
+        reason = classify_direct_response(status, final_url, text)
+        if reason:
+            raise DirectBlocked(reason)
+        if status == 404:
+            raise DirectError("page not found")
+        if status != 200:
+            raise DirectError(f"HTTP {status}", fallback=True)
+        try:
+            return parse_web_profile(json.loads(text), handle)
+        except ValueError:
+            raise DirectError("not JSON", fallback=True)
+
+
+class RegionApifyFallback:
+    """Apify fetch by the server (R38 #211, #214): ig-gateway `apify_fetch` starts one Apify run per region with that region's key (Vault), the runner
+    polls the signed run tickets and receives the posts. A regional key NEVER reaches this process, and there is no key fallback here: a region with no
+    key, an exhausted key, or over its daily run cap is skipped by the server with a reason, which is logged per page. Runs started by an earlier
+    run and never collected come back too (`orphan`)."""
+
+    MAX_RESTARTS = 3
+
+    def __init__(self, gw, log=print, per_page: int = 12, newer_than: str | None = None, max_results: int = 600, sleep=time.sleep,
+                 poll_seconds: int = 10, deadline_seconds: int = 20 * 60):
+        self.gw, self.log = gw, log
+        self.per_page, self.newer_than, self.max_results = per_page, newer_than, max_results
+        self.sleep, self.poll_seconds, self.deadline_seconds = sleep, poll_seconds, deadline_seconds
+        self.failed: dict[str, str] = {}
+        self.pool = None
+
+    def _start(self, handles: list[str]) -> dict:
+        body = {"handles": handles, "per_page": self.per_page, "max_results": self.max_results}
+        if self.newer_than:
+            body["newer_than"] = self.newer_than
+        return self.gw.call("apify_fetch", **body) or {}
+
+    def _note_skipped(self, resp: dict) -> None:
+        for h, why in (resp.get("skipped") or {}).items():
+            self.log(f"Apify skipped for {h}: {str(why)[:200]}")
+
+    def fetch(self, handles: list[str]) -> list[dict]:
+        try:
+            first = self._start(handles)
+        except Exception as exc:
+            raise RuntimeError(f"Apify fallback unavailable: {str(exc)[:200]}")
+        self._note_skipped(first)
+        posts: list[dict] = []
+        ok, last = 0, ""
+        for h, why in (first.get("failed") or {}).items():
+            self.failed[h] = str(why)[:300]
+            last = str(why)
+        pending = [{"ticket": r["ticket"], "handles": list(r.get("handles") or []), "restarts": 0} for r in (first.get("runs") or []) if isinstance(r, dict) and r.get("ticket")]
+        deadline = time.time() + self.deadline_seconds
+        while pending and time.time() < deadline:
+            nxt = []
+            for run in pending:
+                out = self.gw.call("apify_fetch", ticket=run["ticket"]) or {}
+                state = out.get("state")
+                if state == "running":
+                    nxt.append(run)
+                elif state == "done":
+                    ok += 1
+                    posts += [p for p in (normalize_apify_item(i) for i in (out.get("items") or [])) if p]
+                elif state == "failed" and out.get("key_exhausted") and run["restarts"] < self.MAX_RESTARTS:
+                    again = self._start(run["handles"])  # the server marked that key exhausted: the next key of the region
+                    self._note_skipped(again)
+                    for h, why in (again.get("failed") or {}).items():
+                        self.failed[h] = str(why)[:300]
+                        last = str(why)
+                    nxt += [{"ticket": r["ticket"], "handles": list(r.get("handles") or []), "restarts": run["restarts"] + 1} for r in (again.get("runs") or []) if isinstance(r, dict) and r.get("ticket")]
+                else:
+                    last = str(out.get("reason") or "Apify run failed")[:300]
+                    for h in run["handles"]:
+                        self.failed[h] = last
+            pending = nxt
+            if pending:
+                self.sleep(self.poll_seconds)
+        for run in pending:  # still running after the deadline
+            last = "Apify run did not finish in 20 minutes"
+            for h in run["handles"]:
+                self.failed[h] = last
+        if not ok:
+            raise AllKeysExhausted(last or "Apify returned nothing")
+        return posts
+
+
+class HybridAdapter:
+    """Direct first, Apify for what direct cannot do. Telemetry in .stats: direct / fallback / failed pages, blocks and their reasons."""
+
+    def __init__(self, direct, fallback, direct_cap: int | None = None, log=print):
+        self.direct, self.fallback, self.direct_cap, self.log = direct, fallback, direct_cap, log
+        self.stats = {"direct": 0, "fallback": 0, "failed": 0, "blocked": 0, "block_reasons": []}
+        self.failed: dict[str, str] = {}
+
+    @property
+    def pool(self):
+        return getattr(self.fallback, "pool", None)
+
+    def fetch(self, handles: list[str]) -> list[dict]:
+        posts: list[dict] = []
+        todo: list[str] = []
+        tripped, tried = False, 0
+        for h in handles:
+            if tripped or (self.direct_cap is not None and tried >= self.direct_cap):
+                todo.append(h)
+                continue
+            tried += 1
+            try:
+                _info, ps = self.direct.fetch_profile(h)
+                posts += ps
+                self.stats["direct"] += 1
+            except DirectBlocked as blk:
+                tripped = True
+                self.stats["blocked"] += 1
+                self.stats["block_reasons"].append(blk.reason)
+                self.log(f"Instagram blocked the direct fetch ({blk.reason}): the rest of the pages go through Apify")
+                todo.append(h)
+            except DirectError as err:
+                if err.fallback:
+                    todo.append(h)
+                else:
+                    self.stats["failed"] += 1
+                    self.failed[h] = str(err)
+        last: Exception | None = None
+        if todo:
+            try:
+                got = self.fallback.fetch(todo)
+            except Exception as exc:  # fallback unusable (all keys used up ...): those pages failed, direct posts are kept
+                last, got = exc, []
+                for h in todo:
+                    self.failed[h] = str(exc)[:300]
+                self.stats["failed"] += len(todo)
+            else:
+                posts += got
+                gone = {h: m for h, m in (getattr(self.fallback, "failed", {}) or {}).items() if h in todo}
+                self.failed.update(gone)
+                self.stats["failed"] += len(gone)
+                self.stats["fallback"] += len(todo) - len(gone)
+        if not posts and handles and len(self.failed) == len(handles):
+            raise last or RuntimeError("no page could be fetched: " + "; ".join(sorted(set(self.failed.values()))[:3]))
+        return posts
+
+
+# ─── OCR of the poster (R38 B2): RapidOCR ONNX on the CPU, optional ──────────
+# Reads the cover and the first 3 carousel images. Text + boxes go to the gateway; results are cached by the SHA-256 of the image bytes
+# (Instagram rotates CDN urls, the picture stays), in memory and in a directory the workflow keeps between runs. Without the package the
+# run goes on without OCR (`pip install -r scripts/scrapers/requirements-ocr.txt`).
+
+class RapidOcrEngine:
+    name = "rapidocr-onnx"
+    MAX_SIDE = 1600
+
+    def __init__(self):
+        from rapidocr_onnxruntime import RapidOCR  # optional dependency
+        self.ocr = RapidOCR()
+
+    def read(self, data: bytes) -> dict:
+        import io
+        import numpy
+        from PIL import Image
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        if max(img.size) > self.MAX_SIDE:
+            f = self.MAX_SIDE / max(img.size)
+            img = img.resize((max(1, int(img.width * f)), max(1, int(img.height * f))))
+        result, _ = self.ocr(numpy.array(img)[:, :, ::-1])
+        lines = []
+        for box, text, conf in (result or []):
+            xs, ys = [p[0] for p in box], [p[1] for p in box]
+            lines.append({"text": str(text)[:300], "x0": round(min(xs)), "y0": round(min(ys)), "x1": round(max(xs)), "y1": round(max(ys)), "conf": round(float(conf), 3)})
+        return {"lines": lines, "width": img.width, "height": img.height}
+
+
+def load_ocr_engine(mode: str = "auto"):
+    """'off' -> None. 'auto' -> the engine, or None when the package is missing. 'on' -> the engine, or an error."""
+    if mode == "off":
+        return None
+    try:
+        return RapidOcrEngine()
+    except Exception as exc:
+        if mode == "on":
+            raise RuntimeError(f"IG_OCR=on but RapidOCR is not usable: {exc}")
+        return None
+
+
+def http_bytes(url: str, max_bytes: int = 8_000_000, timeout: int = 30) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": DIRECT_UA})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = resp.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise OSError("image too large")
+    return data
+
+
+def make_thumb(data: bytes) -> list[float] | None:
+    """28x28 grayscale of an image, 784 floats 0..1 row-major (the layout input of the v2 model, R38 #207). Needs Pillow (optional): None without it
+    or for bytes that are not an image."""
+    try:
+        import io
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as img:
+            g = img.convert("L").resize((28, 28), Image.LANCZOS)
+            return [round(v / 255.0, 2) for v in g.getdata()]
+    except Exception:
+        return None
+
+
+def _cdn_url(url) -> bool:
+    if not isinstance(url, str) or not url.startswith("https://"):
+        return False
+    host = urllib.parse.urlparse(url).hostname or ""
+    return any(host.endswith(s) or host == s.lstrip(".") for s in _CDN_HOSTS)
+
+
+class OcrReader:
+    def __init__(self, engine, get_bytes=http_bytes, cache_dir: str | None = None, max_images: int = 800, max_seconds: float | None = None, clock=time.time):
+        self.engine, self.get, self.cache_dir, self.max_images = engine, get_bytes, cache_dir, max_images
+        self.memory: dict[str, dict] = {}
+        self.used = 0
+        self.deadline = clock() + max_seconds if max_seconds else None
+        self.clock = clock
+        self.stats = {"images": 0, "cache_hits": 0, "skipped": 0}
+        if cache_dir:
+            os.makedirs(cache_dir, exist_ok=True)
+
+    @staticmethod
+    def _store(path: str | None, hit: dict) -> None:
+        if path:
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(hit, fh)
+            except OSError:
+                pass
+
+    def _read_image(self, url: str) -> dict | None:
+        if self.used >= self.max_images or (self.deadline and self.clock() > self.deadline) or not _cdn_url(url):
+            self.stats["skipped"] += 1
+            return None
+        self.used += 1
+        try:
+            data = self.get(url)
+        except Exception:
+            self.stats["skipped"] += 1
+            return None
+        digest = hashlib.sha256(data).hexdigest()
+        hit = self.memory.get(digest)
+        path = os.path.join(self.cache_dir, digest + ".json") if self.cache_dir else None
+        if hit is None and path and os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as fh:
+                    hit = json.load(fh)
+            except (OSError, ValueError):
+                hit = None
+        if hit is not None:
+            self.stats["cache_hits"] += 1
+            if "thumb" not in hit:  # a cache entry from before the thumb existed
+                hit["thumb"] = make_thumb(data)
+                self._store(path, hit)
+        else:
+            try:
+                hit = self.engine.read(data)
+            except Exception:
+                self.stats["skipped"] += 1
+                return None
+            hit["thumb"] = make_thumb(data)
+            self._store(path, hit)
+        self.memory[digest] = hit
+        self.stats["images"] += 1
+        return hit
+
+    def read_post(self, post: dict) -> dict | None:
+        urls: list[str] = []
+        for u in [post.get("imageUrl")] + list(post.get("children") or []):
+            if u and u not in urls:
+                urls.append(u)
+        results = [r for r in (self._read_image(u) for u in urls[:4]) if r]
+        if not results:
+            return None
+        cover = results[0]
+        texts = ["\n".join(l["text"] for l in sorted(r["lines"], key=lambda l: (l["y0"], l["x0"]))) for r in results]
+        area = sum(max(0, l["x1"] - l["x0"]) * max(0, l["y1"] - l["y0"]) for l in cover["lines"])
+        size = (cover.get("width") or 0) * (cover.get("height") or 0)
+        out = {
+            "text": "\n".join(t for t in texts if t)[:4000],
+            "lines": sorted(cover["lines"], key=lambda l: (l["y0"], l["x0"]))[:60],
+            "textAreaRatio": round(min(1.0, area / size), 6) if size else None,
+            "images": len(results),
+            "engine": getattr(self.engine, "name", "ocr"),
+        }
+        if cover.get("thumb"):
+            out["thumb"] = cover["thumb"]  # moved onto the post by read_posters: the gateway reads it at post level
+        return out
+
+
 class FileAdapter:
     """Offline: a saved Apify dataset. Used by --validate and by tests."""
 
@@ -280,7 +716,49 @@ def exit_code(result: dict) -> int:
     return 1 if result.get("fetch_failed") or result.get("all_unknown") else 0
 
 
-def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: bool, log=print, only_handles: list[str] | None = None) -> dict:
+def webhook_outcome(body) -> str:
+    """What happened to the events of one webhook call, for `confirm` (R38 B2 fix): a post is seen only if the webhook stored it or dropped it for a
+    final reason. stored = inserted, merged into an existing event or a duplicate. rejected = dropped (past event, spam, bad title, outside NL ...).
+    retry = the webhook reported errors: the post must be sent again."""
+    if isinstance(body, dict):
+        if body.get("errors"):
+            return "retry"
+        if "inserted" in body and not (int(body.get("inserted") or 0) + int(body.get("skipped_duplicates") or 0) + int(body.get("merged") or 0)):
+            return "rejected"
+    return "stored"
+
+
+def read_posters(gw, ocr, posts: list[dict], log=print) -> None:
+    """OCR only the posts the gateway has not judged yet (ig-gateway `unseen`): most posts of a run are old. A gateway without the action: all posts."""
+    wanted = None
+    try:
+        codes = [p["shortcode"] for p in posts]
+        wanted = set()
+        for i in range(0, len(codes), 500):
+            out = gw.call("unseen", shortcodes=codes[i:i + 500])
+            if not isinstance(out, dict) or not isinstance(out.get("unseen"), list):
+                wanted = None
+                break
+            wanted.update(out["unseen"])
+    except Exception as exc:
+        log(f"unseen list not available ({str(exc)[:80]}): reading every poster")
+        wanted = None
+    for p in posts:
+        if wanted is not None and p["shortcode"] not in wanted:
+            continue
+        try:
+            res = ocr.read_post(p)
+        except Exception as exc:  # OCR must never stop a run
+            log(f"OCR failed for {p['shortcode']}: {str(exc)[:80]}")
+            continue
+        if res:
+            thumb = res.pop("thumb", None)
+            if thumb:
+                p["thumb"] = thumb
+            p["ocr"] = res
+
+
+def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: bool, log=print, only_handles: list[str] | None = None, ocr=None) -> dict:
     auto = gw.call("automation")
     if not auto.get("enabled") and not force:
         log("IG scraping is switched off (feature flag or automation): nothing to do")
@@ -319,6 +797,16 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
             return summary
         pool = getattr(adapter, "pool", None)
         keys_note = f", keys: {pool.report()}" if pool is not None and len(pool.keys) > 1 else ""
+        fs = summary.get("fetch")
+        if fs:  # per-run telemetry (R38 B1): how many pages came directly, through Apify, or not at all
+            keys_note += f", direct {fs['direct']}, fallback {fs['fallback']}, failed {fs['failed']}"
+            if fs.get("block_reasons"):
+                keys_note += f" (blocked: {','.join(fs['block_reasons'])})"
+        if summary.get("retry"):
+            keys_note += f", retry {summary['retry']}"
+        ost = getattr(ocr, "stats", None)
+        if ost:
+            keys_note += f", ocr {ost['images']} images ({ost['cache_hits']} cached)"
         stored = f", inserted {summary['inserted']}, duplicates {summary['duplicates']}, filtered {summary['filtered']}" if answered[0] else ""
         notes = f"pages {summary['pages']}, posts {summary['posts']}, events {summary['events']}, posted {summary['posted']}{stored}{keys_note}"
         if error:
@@ -349,6 +837,15 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
         return finish(str(exc))
     summary["posts"] = len(posts)
     per_handle: dict[str, dict] = {h: {"events": 0, "newest": None, "error": None} for h in handles}
+    stats = getattr(adapter, "stats", None)
+    if stats:
+        summary["fetch"] = dict(stats)
+    for h, why in (getattr(adapter, "failed", None) or {}).items():  # pages that could not be fetched at all: reported in the admin page
+        if h in per_handle:
+            per_handle[h]["error"] = f"fetch failed: {why}"[:400]
+            summary["errors"] += 1
+    if ocr is not None and posts:
+        read_posters(gw, ocr, posts, log)
     for i in range(0, len(posts), BATCH):
         batch = posts[i:i + BATCH]
         out = gw.call("classify", posts=batch, dry_run=dry_run)
@@ -377,7 +874,17 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
                     log(f"Webhook stored {body.get('inserted', 0)} of {len(events)} events (duplicates {body.get('skipped_duplicates', 0)}, filtered {body.get('filtered', 0)})")
                     for reason in (body.get("filter_log") or [])[:20]:
                         log(f"  dropped: {reason}")
-                gw.call("confirm", posts=pending)
+                outcome = webhook_outcome(body)
+                if outcome == "retry":
+                    summary["retry"] = summary.get("retry", 0) + len(pending)
+                    summary["errors"] += 1
+                    log("Webhook reported errors: these posts stay unseen and are sent again next run")
+                    for e in events:
+                        h = str(e.get("source", "")).split(":", 1)[-1]
+                        if h in per_handle:
+                            per_handle[h]["error"] = "webhook error, retry next run"
+                else:
+                    gw.call("confirm", posts=[{**p, "outcome": outcome} for p in pending])
             else:
                 summary["errors"] += 1
                 log(f"Webhook returned HTTP {status}; events stay unconfirmed and are retried next run: {str(body)[:200]}")
@@ -392,6 +899,14 @@ def run_flow(gw, adapter, post_events, *, max_pages: int, dry_run: bool, force: 
     finish()
     log(f"Done: {summary}")
     return summary
+
+
+class _NoFallback:
+    """IG_FETCH=direct: pages direct fetching cannot read are failed, never sent to Apify."""
+    failed: dict = {}
+
+    def fetch(self, handles):
+        raise RuntimeError("Apify fallback is switched off (IG_FETCH=direct)")
 
 
 # ─── Entry points ────────────────────────────────────────────────────────────
@@ -447,6 +962,33 @@ def _validate_keys() -> None:
     a2 = KeyPool(["k1", "k2"]); a2.mark(0, "quota"); assert KeyPool(["k1", "k2"]).next() == 0 and a2.next() == 1, "a new pool tries the key again"
 
 
+def _validate_fetch() -> None:
+    """Direct fetch (R38): block detector and the direct -> Apify handover, no network (full table in tests/ig/fetch_test.py)."""
+    assert classify_direct_response(429, "u", "{}") == "rate_limit" and classify_direct_response(200, "https://www.instagram.com/accounts/login/", "") == "login"
+    assert classify_direct_response(200, "u", '{"message":"checkpoint_required"}') == "checkpoint" and classify_direct_response(200, "u", '{"data":{}}') is None
+    node = {"shortcode": "AAAAA1", "__typename": "GraphSidecar", "owner": {"username": "bigclub"}, "taken_at_timestamp": 1764000000, "display_url": "https://x.cdninstagram.com/a.jpg",
+            "edge_sidecar_to_children": {"edges": [{"node": {"display_url": "https://x.cdninstagram.com/b.jpg"}}]}}
+    payload = {"data": {"user": {"username": "esn", "biography": "bio", "external_url": "https://linktr.ee/x", "edge_owner_to_timeline_media": {"edges": [{"node": node}]}}}}
+    info, posts = parse_web_profile(payload, "esn")
+    assert info["bio"] == "bio" and posts[0]["type"] == "carousel" and posts[0]["children"] and posts[0]["collaborators"] == ["esn"], "profile parsing"
+
+    class Direct:
+        def fetch_profile(self, h):
+            if h == "blocked":
+                raise DirectBlocked("rate_limit")
+            return {}, [{"shortcode": "D" + h, "handle": h, "source": "direct"}]
+
+    class Fallback:
+        failed: dict = {}
+        def fetch(self, hs):
+            return [{"shortcode": "F" + h, "handle": h, "source": "apify"} for h in hs]
+
+    h = HybridAdapter(Direct(), Fallback(), log=lambda *_: None)
+    got = h.fetch(["ok", "blocked", "later"])
+    assert h.stats["direct"] == 1 and h.stats["fallback"] == 2 and h.stats["blocked"] == 1 and len(got) == 3, h.stats
+    assert webhook_outcome({"inserted": 1}) == "stored" and webhook_outcome({"inserted": 0, "filtered": 1}) == "rejected" and webhook_outcome({"errors": ["x"]}) == "retry"
+
+
 def validate() -> int:
     """Offline self-check on the saved Apify dataset: normalisation and the fake end-to-end flow."""
     items = json.load(open(FIXTURE_PATH, encoding="utf-8"))
@@ -483,6 +1025,7 @@ def validate() -> int:
     run_flow(FakeGw(), FileAdapter(FIXTURE_PATH), lambda ev: (posted.append(ev) or (200, "ok")), max_pages=10, dry_run=True, force=False, log=lambda *_: None)
     assert not posted and "confirm" not in [c[0] for c in calls] and "page_result" not in [c[0] for c in calls], "dry run posts and stores nothing"
     _validate_keys()
+    _validate_fetch()
     # run log (BUG-F20261110-44): normal run ends with run_log after page_result, a failed fetch is logged too, a dry run logs nothing
     calls.clear(); posted.clear()
     class ZeroGw(FakeGw):
@@ -590,8 +1133,8 @@ def main(argv: list[str] | None = None) -> int:
     gateway_url = os.environ.get("IG_GATEWAY_URL", "").strip() or (f"{supabase_url}/functions/v1/ig-gateway" if supabase_url else "")
     webhook_url = os.environ.get("SCRAPING_WEBHOOK_URL", "").strip() or (f"{supabase_url}/functions/v1/scraping-webhook" if supabase_url else "")
     source = os.environ.get("IG_SOURCE", "apify")
-    keys = parse_apify_keys(os.environ)
-    missing = [n for n, v in (("SUPABASE_URL", gateway_url), ("SCRAPER_WEBHOOK_SECRET", secret), ("APIFY_API_KEYS or APIFY_API_KEY", "x" if keys or source != "apify" else "")) if not v]
+    fetch_mode = os.environ.get("IG_FETCH", "auto").lower()  # auto = direct first, Apify fallback | direct | apify (old behaviour)
+    missing = [n for n, v in (("SUPABASE_URL", gateway_url), ("SCRAPER_WEBHOOK_SECRET", secret)) if not v]  # no Apify key needed here: the regional keys live on the server (apify_fetch)
     if missing:
         print(f"Missing env vars: {', '.join(missing)}", file=sys.stderr)
         return 1
@@ -610,7 +1153,22 @@ def main(argv: list[str] | None = None) -> int:
     days = int(os.environ.get("IG_FIRST_RUN_DAYS", "14"))
     newer = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
     gw = Gateway(gateway_url, secret)
-    adapter = FileAdapter(os.environ.get("IG_FIXTURE", FIXTURE_PATH)) if source == "file" else ApifyAdapter(KeyPool(keys, int(time.time() // 86400)), per_page, newer, max_results)
+    if source == "file":
+        adapter = FileAdapter(os.environ.get("IG_FIXTURE", FIXTURE_PATH))
+    else:
+        fallback = RegionApifyFallback(gw, per_page=per_page, newer_than=newer, max_results=max_results)
+        if fetch_mode == "apify":
+            adapter = fallback
+        else:
+            direct = DirectFetcher(min_delay=float(os.environ.get("IG_DIRECT_MIN_DELAY", "2.5")), max_delay=float(os.environ.get("IG_DIRECT_MAX_DELAY", "6")))
+            adapter = HybridAdapter(direct, fallback if fetch_mode != "direct" else _NoFallback(), direct_cap=int(os.environ.get("IG_DIRECT_MAX", "60")))
+    ocr = None
+    engine = load_ocr_engine(os.environ.get("IG_OCR", "auto").lower())
+    if engine is not None:
+        ocr = OcrReader(engine, cache_dir=os.environ.get("IG_OCR_CACHE_DIR", ".ocr_cache"), max_images=int(os.environ.get("IG_OCR_MAX_IMAGES", "800")),
+                        max_seconds=float(os.environ.get("IG_OCR_MAX_SECONDS", "900")))
+    else:
+        print("OCR is off (RapidOCR not installed or IG_OCR=off): posters are classified from the caption only")
 
     def post_events(events: list[dict]):
         # same door and headers as every other scraper; X-Auto-Approve false, and the webhook forces in_review for source_kind instagram anyway
@@ -618,7 +1176,7 @@ def main(argv: list[str] | None = None) -> int:
         return status, body
 
     try:
-        result = run_flow(gw, adapter, post_events, max_pages=max_pages, dry_run=dry_run, force=force, only_handles=only_handles)
+        result = run_flow(gw, adapter, post_events, max_pages=max_pages, dry_run=dry_run, force=force, only_handles=only_handles, ocr=ocr)
     except Exception as exc:
         print(f"Run failed: {exc}", file=sys.stderr)
         return 1

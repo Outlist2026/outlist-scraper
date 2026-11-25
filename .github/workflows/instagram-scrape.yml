@@ -1,5 +1,5 @@
 # Instagram scraper (S5). Runs on GitHub Actions of the PUBLIC runner repository. Plain Python, no browser, no Instagram login.
-# Posts come from Apify; Outlist's ig-gateway decides which posts are events (local model, no LLM) and the events go to the normal
+# Posts come first from Instagram's public web endpoint (no login, polite rate, block detector) and from Apify for the pages it cannot read; Outlist's ig-gateway decides which posts are events (local model, no LLM) and the events go to the normal
 # approval queue (in_review, never auto-published). The database service key never reaches this repository.
 #
 # Repository settings:
@@ -54,6 +54,16 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
+      - name: Install OCR (optional, CPU only)
+        # RapidOCR ONNX reads the text on posters. If this step fails the scraper still runs, on the caption alone.
+        continue-on-error: true
+        run: python -m pip install --disable-pip-version-check -r scripts/scrapers/requirements-ocr.txt
+      - name: Restore the OCR cache (poster text by image hash)
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .ocr_cache
+          key: ocr-cache-${{ github.run_id }}
+          restore-keys: ocr-cache-
       - name: Run the Instagram scraper
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
@@ -63,6 +73,8 @@ jobs:
           OUTLIST_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
           OUTLIST_FORCE: ${{ inputs.force || 'false' }}
           OUTLIST_HANDLES: ${{ github.event_name == 'workflow_dispatch' && inputs.handles || '' }}
+          IG_FETCH: auto   # direct fetch without login first, Apify (keys of the page's region) for blocked pages; apify = old behaviour
+          IG_OCR: auto     # on = fail when OCR is missing, off = caption only
           PYTHONUTF8: '1'
         run: python scripts/scrapers/instagram_scraper.py
 
@@ -89,5 +101,3 @@ jobs:
           else
             echo "Issue #$NUM already open - not adding more noise (latest failure: $RUN_URL)"
           fi
-
-
