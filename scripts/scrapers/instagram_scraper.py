@@ -25,6 +25,7 @@ Environment (names only, values live in repository secrets / the owner key file)
   OUTLIST_FORCE=true       run even if automation is off
   OUTLIST_HANDLES=a,b      only these pages (comma separated, with or without @); empty = all active pages. Use with OUTLIST_DRY_RUN to test a page
   IG_MAX_PAGES=150  IG_POSTS_PER_PAGE=8  IG_MAX_RESULTS=1200  IG_FIRST_RUN_DAYS=14
+  Cost: Apify bills per result, so a run costs about pages x posts per page results (150 x 8 = 1200, the IG_MAX_RESULTS cap); 12 posts per page costs about $3.2 per run at the FREE rate; raise IG_POSTS_PER_PAGE only together with a shorter IG_FIRST_RUN_DAYS window and a funded Apify plan
   IG_FETCH=auto|direct|apify   auto (default) = direct fetch without login first, Apify for blocked pages; direct = never Apify; apify = Apify only (old behaviour)
   IG_DIRECT_MAX=60  IG_DIRECT_MIN_DELAY=2.5  IG_DIRECT_MAX_DELAY=6   per-run cap of direct pages and the jittered pause between them
   IG_OCR=auto|on|off       RapidOCR ONNX on the cover + first 3 carousel images (auto: only when the package is installed)
@@ -699,7 +700,8 @@ def write_step_summary(message: str) -> None:
 
 
 DEFAULT_MAX_PAGES = 150
-DEFAULT_MAX_RESULTS = 1200
+DEFAULT_POSTS_PER_PAGE = 8  # cost = pages x posts per page results; 12 posts per page costs about $3.2 per run at the FREE rate; raise only with a shorter IG_FIRST_RUN_DAYS and a funded Apify plan
+DEFAULT_MAX_RESULTS = 1200  # DEFAULT_MAX_PAGES x DEFAULT_POSTS_PER_PAGE
 
 
 def parse_handles(raw: str | None) -> list[str]:
@@ -1066,7 +1068,7 @@ def validate() -> int:
     # BUG-F20261119-1: parse_handles and the targeted run (only_handles)
     assert parse_handles(" @IsaA.UvA, esn ,,esn") == ["isaa.uva", "esn"], parse_handles(" @IsaA.UvA, esn ,,esn")
     assert parse_handles("") == [] and parse_handles(None) == [], "blank handles"
-    assert DEFAULT_MAX_PAGES == 150 and DEFAULT_MAX_RESULTS == 1200, "defaults are 150 pages and 1200 results"
+    assert DEFAULT_MAX_PAGES == 150 and DEFAULT_MAX_RESULTS == 1200 and DEFAULT_POSTS_PER_PAGE == 8, "defaults are 150 pages, 8 posts per page and 1200 results"
 
     class MultiGw(FakeGw):
         def call(self, action, **body):
@@ -1141,7 +1143,7 @@ def main(argv: list[str] | None = None) -> int:
     dry_run = os.environ.get("OUTLIST_DRY_RUN", "").lower() in ("1", "true", "yes")
     force = os.environ.get("OUTLIST_FORCE", "").lower() in ("1", "true", "yes")
     max_pages = int(os.environ.get("IG_MAX_PAGES", str(DEFAULT_MAX_PAGES)))
-    per_page = int(os.environ.get("IG_POSTS_PER_PAGE", "8"))
+    per_page = int(os.environ.get("IG_POSTS_PER_PAGE", str(DEFAULT_POSTS_PER_PAGE)))
     max_results = int(os.environ.get("IG_MAX_RESULTS", str(DEFAULT_MAX_RESULTS)))
     raw_handles = os.environ.get("OUTLIST_HANDLES")
     only_handles = parse_handles(raw_handles)
