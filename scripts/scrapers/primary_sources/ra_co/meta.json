@@ -6,7 +6,7 @@
   "source_url": "https://ra.co/events/nl/amsterdam",
   "source_prefix": "primary:ra_co",
   "api": "POST https://ra.co/graphql (eventListings, public, no login)",
-  "enabled": false,
+  "enabled": true,
   "env_switch": "OUTLIST_PRIMARY_RA_CO",
   "params": { "area_id": 29 },
   "reliability": 80,
