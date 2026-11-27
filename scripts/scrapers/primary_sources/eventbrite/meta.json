@@ -1,0 +1,32 @@
+{
+  "slug": "eventbrite",
+  "name": "Eventbrite Amsterdam",
+  "region_slug": "amsterdam",
+  "site_url": "https://www.eventbrite.nl",
+  "source_url": "https://www.eventbrite.nl/d/netherlands--amsterdam/events/",
+  "source_prefix": "primary:eventbrite",
+  "api": "GET /d/netherlands--amsterdam/{events,nightlife--events}/ (server-rendered __SERVER_DATA__ cards + schema.org ItemList) + GET /e/<slug> detail JSON-LD for items without a time",
+  "enabled": true,
+  "env_switch": "OUTLIST_PRIMARY_EVENTBRITE",
+  "params": { "pages": ["/d/netherlands--amsterdam/events/", "/d/netherlands--amsterdam/nightlife--events/"] },
+  "reliability": 70,
+  "event_cap": 150,
+  "rate": { "min_interval_s": 2.0, "max_requests": 40 },
+  "robots": {
+    "url": "https://www.eventbrite.nl/robots.txt",
+    "checked_at": "2026-11-27",
+    "verdict": "allowed",
+    "note": "User-agent * does not disallow /d/ or /e/. It disallows /directory/, /api/v3/destination/events/ (the pagination API) and several query-string patterns (?x, ?i, &id ...): no URL with a query string is requested, so only the first page of each listing is read."
+  },
+  "tos": {
+    "url": "https://www.eventbrite.com/support/articles/en_US/Troubleshooting/eventbrite-terms-of-service",
+    "checked_at": "2026-11-27",
+    "verdict": "restricted",
+    "note": "The Eventbrite Terms of Service restrict automated access to the service without permission. Public pages only, no login, no user data, 2 s between requests, about 10 requests per run."
+  },
+  "risk": {
+    "level": "medium",
+    "note": "ToS restrict automated access. Owner decision of 27/11/2026 to switch it on (the Apify actor it replaces ran out of keys). Likely consequence: an IP block of the runner. Events keep a link back to the Eventbrite page. Switch off: scraping_sources.is_active=false or OUTLIST_PRIMARY_EVENTBRITE=off."
+  },
+  "built_with": { "method": "manual inspection of the public pages (no login)", "date": "2026-11-27" }
+}

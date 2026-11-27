@@ -16,6 +16,7 @@ SLUGS: list[str] = [
     "ra_co",
     "iamsterdam",
     "instagram",
+    "eventbrite",
 ]
 
 HERE = os.path.dirname(os.path.abspath(__file__))
